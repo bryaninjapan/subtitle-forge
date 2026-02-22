@@ -1,0 +1,2 @@
+mlx-qwen3-asr>=0.2.3
+mlx-lm>=0.25.2
