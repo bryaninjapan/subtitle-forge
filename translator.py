@@ -9,11 +9,12 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from glossary_manager import update_glossary_auto
 
 from tqdm import tqdm
 
 from config import (
-    GLOSSARY,
+    load_glossary,
     TRANSLATION_BATCH_SIZE,
     TRANSLATION_MAX_CONCURRENT,
     TRANSLATION_SYSTEM_PROMPT,
@@ -54,12 +55,14 @@ def _translate_batch_gemini(
     total_batches: int,
     retries: int = 3,
     retry_delay: float = 10.0,
-) -> str:
+    glossary: dict | None = None,
+) -> tuple[str, object]:
     """Send a single batch of subtitle lines to Gemini. Thread-safe."""
     from google.genai import types
 
     # Prepare glossary text
-    glossary_lines = [f"- {k} -> {v}" for k, v in GLOSSARY.items()]
+    current_glossary = glossary or {}
+    glossary_lines = [f"- {k} -> {v}" for k, v in current_glossary.items()]
     glossary_text = "\n".join(glossary_lines)
     
     system_prompt = TRANSLATION_SYSTEM_PROMPT.format(glossary_text=glossary_text)
@@ -113,9 +116,21 @@ def translate_srt_files(
     print("Gemini client initialized.\n")
 
     results: dict[Path, Path] = {}
+    
+    # Reload glossary once at the start
+    current_glossary = load_glossary()
 
     for i, (media_path, srt_path) in enumerate(srt_mapping.items(), 1):
         print(f"[{i}/{len(srt_mapping)}] Translating: {srt_path.name}")
+        
+        # --- PHASE 2: AI Auto-Learning Mode ---
+        # Scan the transcript and update the glossary JSON automatically
+        try:
+            update_glossary_auto(srt_path)
+            # Re-load the glossary so the upcoming translation uses the newly found terms
+            current_glossary = load_glossary()
+        except Exception as e:
+            print(f"  [Glossary] Auto-update skipped: {e}")
 
         try:
             content = srt_path.read_text(encoding="utf-8")
@@ -143,6 +158,7 @@ def translate_srt_files(
                         batch_text,
                         bi,
                         total,
+                        glossary=current_glossary,
                     )
                     ordered_futures.append((bi, batch, future))
 
