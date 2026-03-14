@@ -16,3 +16,10 @@ output/*
 
 # OS
 .DS_Store
+
+# Local scripts and tests (avoid key exposure)
+test_gemini.py
+process_vids.sh
+tmp/
+*.log
+.env
