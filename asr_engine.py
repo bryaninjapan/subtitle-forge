@@ -12,6 +12,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from tqdm import tqdm
+
 from config import (
     AUDIO_SAMPLE_RATE,
     FFMPEG_BIN,
@@ -149,18 +151,22 @@ def _transcribe_with_gemini(
         file=media_path,
         config={"mime_type": mime_type},
     )
-    print(f"  Upload done in {time.time() - t0:.1f}s. Processing...")
+    upload_time = time.time() - t0
+    
+    # Poll until file is ACTIVE with a progress message
+    print(f"  Upload successful ({upload_time:.1f}s). Waiting for Gemini to process...")
+    
+    with tqdm(desc="  Gemini Processing", bar_format="{desc}: {elapsed}", leave=False) as pbar:
+        while uploaded_file.state and uploaded_file.state.name == "PROCESSING":
+            time.sleep(2)
+            uploaded_file = client.files.get(name=uploaded_file.name)
+            pbar.update(1)
 
+    # Transcription prompt
     lang_instruction = ""
     if language:
         lang_instruction = f"\nThe audio language is {language}. Transcribe in {language}."
-
     prompt = _GEMINI_ASR_SYSTEM_PROMPT + lang_instruction
-
-    # Poll until file is ACTIVE (processing can take a moment for large files)
-    while uploaded_file.state and uploaded_file.state.name == "PROCESSING":
-        time.sleep(3)
-        uploaded_file = client.files.get(name=uploaded_file.name)
 
     t1 = time.time()
     response = client.models.generate_content(
@@ -176,7 +182,8 @@ def _transcribe_with_gemini(
             temperature=0.0,
         ),
     )
-    print(f"  Transcription done in {time.time() - t1:.1f}s")
+    transcription_time = time.time() - t1
+    print(f"  Transcription done in {transcription_time:.1f}s")
 
     # Clean up uploaded file to free quota
     try:
@@ -184,7 +191,7 @@ def _transcribe_with_gemini(
     except Exception:
         pass
 
-    return response.text
+    return response.text, response.usage_metadata
 
 
 def _parse_gemini_srt_to_entries(raw_srt: str) -> list[dict]:
@@ -368,7 +375,10 @@ def _transcribe_files_gemini(
         try:
             # Upload the original media file directly to Gemini (no WAV conversion needed)
             # For already-audio files, upload as-is; for video files, upload MP4 directly
-            raw_srt = _transcribe_with_gemini(media_path, language, gemini_model)
+            raw_srt, usage = _transcribe_with_gemini(media_path, language, gemini_model)
+
+            if usage:
+                print(f"  Token Usage (ASR): Input={usage.prompt_token_count}, Output={usage.candidates_token_count}, Total={usage.total_token_count}")
 
             if transcript_only:
                 # Parse SRT and write only TXT

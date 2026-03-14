@@ -80,6 +80,7 @@ def run_pipeline(
     asr_only: bool = False,
     translate_only: bool = False,
     transcript_only: bool = False,
+    args: argparse.Namespace | None = None,
 ) -> None:
     """Run the full subtitle generation and translation pipeline.
 
@@ -136,6 +137,19 @@ def run_pipeline(
     if transcript_only:
         srt_mapping = transcribe_files(to_transcribe, language=language, transcript_only=True)
         _print_summary(start_time, len(srt_mapping))
+        return
+
+    # ── notes-only mode ────────────────────────────────────────────────────────
+    if getattr(args, 'notes_only', False):
+        print("\n[--notes-only] Generating study notes for all processed videos...")
+        count = 0
+        for d in OUTPUT_DIR.iterdir():
+            if d.is_dir():
+                txt_path = d / f"{d.name}.txt"
+                if txt_path.exists():
+                    generate_study_notes(Path(f"input/{d.name}.mp4"), txt_path.read_text(encoding="utf-8"))
+                    count += 1
+        print(f"\nDone! Checked {count} video directory(s).")
         return
 
     # ── Full pipeline: overlap ASR(N+1) with Translation(N) ──────────────────
@@ -246,6 +260,11 @@ def main() -> None:
         action="store_true",
         help="Only output plain-text transcript (no SRT, no translation)",
     )
+    parser.add_argument(
+        "--notes-only",
+        action="store_true",
+        help="Generate study notes for all videos that have transcripts in output/",
+    )
     args = parser.parse_args()
 
     if args.asr_only and args.translate_only:
@@ -264,6 +283,7 @@ def main() -> None:
         asr_only=args.asr_only,
         translate_only=args.translate_only,
         transcript_only=args.transcript_only,
+        args=args
     )
 
 
