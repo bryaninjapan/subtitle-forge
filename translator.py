@@ -121,6 +121,14 @@ def translate_srt_files(
     current_glossary = load_glossary()
 
     for i, (media_path, srt_path) in enumerate(srt_mapping.items(), 1):
+        zh_srt_path = srt_path.parent / f"{media_path.stem}.zh.srt"
+        
+        # --- PHASE 3: Task Recovery (Checkpointing) ---
+        if zh_srt_path.exists():
+            print(f"[{i}/{len(srt_mapping)}] [skip] Chinese translation already exists: {zh_srt_path.name}")
+            results[media_path] = zh_srt_path
+            continue
+
         print(f"[{i}/{len(srt_mapping)}] Translating: {srt_path.name}")
         
         # --- PHASE 2: AI Auto-Learning Mode ---

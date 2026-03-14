@@ -93,7 +93,8 @@ def run_pipeline(
     from concurrent.futures import ThreadPoolExecutor, Future, as_completed
     from asr_engine import transcribe_files
     from translator import translate_srt_files
-    from config import ASR_MAX_CONCURRENT
+    from notes_generator import generate_study_notes
+    from config import ASR_MAX_CONCURRENT, OUTPUT_DIR
 
     start_time = time.time()
 
@@ -142,6 +143,12 @@ def run_pipeline(
         # Single video: pipeline has no benefit, keep it simple
         srt_mapping = transcribe_files(to_transcribe, language=language)
         if srt_mapping:
+            # Generate notes
+            for media_path in srt_mapping:
+                txt_path = OUTPUT_DIR / media_path.stem / f"{media_path.stem}.txt"
+                if txt_path.exists():
+                    generate_study_notes(media_path, txt_path.read_text(encoding="utf-8"))
+            
             translate_srt_files(srt_mapping)
         _print_summary(start_time, len(srt_mapping) if srt_mapping else 0)
         return
@@ -166,9 +173,19 @@ def run_pipeline(
         if srt_mapping:
             with lock:
                 all_results_count += len(srt_mapping)
+            
+            # Generate study notes (can be done in this ASR thread before translation task)
+            for media_path in srt_mapping:
+                txt_path = OUTPUT_DIR / media_path.stem / f"{media_path.stem}.txt"
+                if txt_path.exists():
+                    try:
+                        generate_study_notes(media_path, txt_path.read_text(encoding="utf-8"))
+                    except Exception as e:
+                        print(f"  [pipeline] Study notes generation failed for {media_path.name}: {e}")
+
             # Submit to translation queue
             future = translation_pool.submit(translate_srt_files, dict(srt_mapping))
-            print(f"  [pipeline] ▶ ASR for '{v_path.name}' done. Translation queued.")
+            print(f"  [pipeline] ▶ ASR and Notes for '{v_path.name}' done. Translation queued.")
             return future
         else:
             print(f"  [pipeline] ✗ ASR failed for '{v_path.name}'.")
