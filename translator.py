@@ -10,7 +10,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from tqdm import tqdm
+
 from config import (
+    GLOSSARY,
     TRANSLATION_BATCH_SIZE,
     TRANSLATION_MAX_CONCURRENT,
     TRANSLATION_SYSTEM_PROMPT,
@@ -55,7 +58,12 @@ def _translate_batch_gemini(
     """Send a single batch of subtitle lines to Gemini. Thread-safe."""
     from google.genai import types
 
-    prompt = f"{TRANSLATION_SYSTEM_PROMPT}\n\n{batch_text}"
+    # Prepare glossary text
+    glossary_lines = [f"- {k} -> {v}" for k, v in GLOSSARY.items()]
+    glossary_text = "\n".join(glossary_lines)
+    
+    system_prompt = TRANSLATION_SYSTEM_PROMPT.format(glossary_text=glossary_text)
+    prompt = f"{system_prompt}\n\n{batch_text}"
 
     for attempt in range(1, retries + 1):
         try:
@@ -67,7 +75,7 @@ def _translate_batch_gemini(
                     max_output_tokens=4096,
                 ),
             )
-            return response.text
+            return response.text, response.usage_metadata
         except Exception as e:
             err_str = str(e).lower()
             # Rate limit: wait longer before retrying
@@ -123,7 +131,7 @@ def translate_srt_files(
 
             t0 = time.time()
 
-            # Submit all batches concurrently, preserving order via indexed futures
+            # Submit all batches concurrently
             ordered_futures: list[tuple[int, list[SrtEntry], object]] = []
             with ThreadPoolExecutor(max_workers=TRANSLATION_MAX_CONCURRENT) as executor:
                 for bi, batch in enumerate(batches, 1):
@@ -138,28 +146,34 @@ def translate_srt_files(
                     )
                     ordered_futures.append((bi, batch, future))
 
-                # Collect results in submission order (maintains subtitle order)
+                # Collect results with a progress bar
                 translated_entries: list[SrtEntry] = []
-                completed = 0
-                for bi, batch, future in ordered_futures:
-                    response = future.result()  # blocks until this specific batch is done
-                    translations = parse_translation_response(response, batch)
-                    for entry, translated_text in zip(batch, translations):
-                        translated_entries.append(SrtEntry(
-                            index=entry.index,
-                            start=entry.start,
-                            end=entry.end,
-                            text=translated_text,
-                        ))
-                    completed += 1
-                    if completed % 5 == 0 or completed == total:
-                        elapsed = time.time() - t0
-                        print(f"  Progress: {completed}/{total} batches done ({elapsed:.1f}s elapsed)")
+                total_usage = {"input": 0, "output": 0, "total": 0}
+                
+                with tqdm(total=total, desc="  Translating", unit="batch", leave=False) as pbar:
+                    for bi, batch, future in ordered_futures:
+                        raw_result, usage = future.result()
+                        translations = parse_translation_response(raw_result, batch)
+                        
+                        if usage:
+                            total_usage["input"] += usage.prompt_token_count
+                            total_usage["output"] += usage.candidates_token_count
+                            total_usage["total"] += usage.total_token_count
+
+                        for entry, translated_text in zip(batch, translations):
+                            translated_entries.append(SrtEntry(
+                                index=entry.index,
+                                start=entry.start,
+                                end=entry.end,
+                                text=translated_text,
+                            ))
+                        pbar.update(1)
 
             zh_srt_path = srt_path.parent / f"{media_path.stem}.zh.srt"
             write_srt(translated_entries, zh_srt_path)
             total_elapsed = time.time() - t0
             print(f"  Saved: {zh_srt_path.name} (total: {total_elapsed:.1f}s for {len(entries)} entries)")
+            print(f"  Token Usage (Translation): Input={total_usage['input']}, Output={total_usage['output']}, Total={total_usage['total']}")
             results[media_path] = zh_srt_path
 
         except Exception as e:

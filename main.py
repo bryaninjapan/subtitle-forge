@@ -90,9 +90,10 @@ def run_pipeline(
       - Video N+1's ASR begins while Video N is still being translated.
     This overlapping reduces total wall-clock time significantly.
     """
-    from concurrent.futures import ThreadPoolExecutor, Future
+    from concurrent.futures import ThreadPoolExecutor, Future, as_completed
     from asr_engine import transcribe_files
     from translator import translate_srt_files
+    from config import ASR_MAX_CONCURRENT
 
     start_time = time.time()
 
@@ -145,36 +146,52 @@ def run_pipeline(
         _print_summary(start_time, len(srt_mapping) if srt_mapping else 0)
         return
 
-    print(f"\n⚡ Pipeline mode: ASR and Translation will overlap across {len(to_transcribe)} videos.\n")
+    # Multi-Video Parallel ASR + Sequential Translation Pipeline
+    print(f"\n⚡ Pipeline mode: {ASR_MAX_CONCURRENT}x ASR and 1x Translation across {len(to_transcribe)} videos.\n")
 
     all_results_count = 0
     translation_futures: list[Future] = []
-
-    # Single background thread for translation keeps things orderly and avoids
-    # flooding the API with too many concurrent upload + translation requests.
+    
+    # We use 1 worker for translation to keep it orderly, but multiple for ASR
     translation_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="translator")
+    asr_pool = ThreadPoolExecutor(max_workers=ASR_MAX_CONCURRENT, thread_name_prefix="asr")
+
+    lock = __import__("threading").Lock()
+
+    def process_video_task(v_path: Path):
+        nonlocal all_results_count
+        # ASR (blocks per thread)
+        srt_mapping = transcribe_files([v_path], language=language)
+        
+        if srt_mapping:
+            with lock:
+                all_results_count += len(srt_mapping)
+            # Submit to translation queue
+            future = translation_pool.submit(translate_srt_files, dict(srt_mapping))
+            print(f"  [pipeline] ▶ ASR for '{v_path.name}' done. Translation queued.")
+            return future
+        else:
+            print(f"  [pipeline] ✗ ASR failed for '{v_path.name}'.")
+            return None
 
     try:
-        for video_path in to_transcribe:
-            # ASR blocks here — either GPU or cloud upload/inference
-            srt_mapping = transcribe_files([video_path], language=language)
+        # Submit all ASR tasks
+        asr_futures = [asr_pool.submit(process_video_task, vp) for vp in to_transcribe]
+        
+        # Collect translation futures as ASR tasks finish
+        for f in as_completed(asr_futures):
+            t_future = f.result()
+            if t_future:
+                translation_futures.append(t_future)
 
-            if srt_mapping:
-                all_results_count += len(srt_mapping)
-                # Kick off translation immediately in background
-                future = translation_pool.submit(translate_srt_files, dict(srt_mapping))
-                translation_futures.append(future)
-                print(f"  [pipeline] ▶ Translation for '{video_path.name}' running in background.")
-            else:
-                print(f"  [pipeline] ✗ ASR failed for '{video_path.name}', skipping translation.")
-
-        # All ASR done — wait for remaining translations
+        # Wait for all translations to complete
         if translation_futures:
-            print(f"\n[pipeline] All ASR complete. Waiting for {len(translation_futures)} translation task(s)...")
+            print(f"\n[pipeline] All ASR tasks complete. Finishing remaining translations...")
             for future in translation_futures:
-                future.result()  # Re-raises any exception from the background thread
+                future.result()
 
     finally:
+        asr_pool.shutdown(wait=False)
         translation_pool.shutdown(wait=False)
 
     _print_summary(start_time, all_results_count)
