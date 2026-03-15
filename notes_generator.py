@@ -30,8 +30,8 @@ def generate_study_notes(media_path: Path, transcript_text: str, frame_paths: li
     if len(transcript_text) > MAX_TRANSCRIPT_CHARS:
         truncated += "\n\n[transcript truncated for length]"
 
-    prompt = f"""
-You are an expert CFA (Chartered Financial Analyst) tutor. Below is a transcript of a CFA Level 1 lecture, along with several keyframes from the video.
+    system_instruction = """
+You are an expert CFA (Chartered Financial Analyst) tutor.
 Your task is to create comprehensive, well-structured study notes in Traditional Chinese (Taiwan).
 
 Please integrate information from the images (slides, charts) with the transcript text to provide a complete picture.
@@ -42,10 +42,9 @@ Sections to include:
 3. **重要公式 (Important Formulas)**: List any formulas mentioned with variable definitions.
 4. **考試重點 (Exam Focus)**: Specific tips or areas that are likely to appear on the CFA exam.
 5. **中英術語對照 (Terminology Table)**: A table of technical terms used in the video.
-
-### Transcript:
-{truncated}
 """
+
+    prompt = f"### Transcript:\n{truncated}"
 
     contents = [prompt]
     
@@ -68,10 +67,14 @@ Sections to include:
         frame_links = ""
 
     try:
+        from usage_tracker import check_backoff, signal_backoff
+        check_backoff() # Wave 7: Participation in global backoff
+        
         response = client.models.generate_content(
             model=model,
             contents=contents,
             config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
                 temperature=0.2, # Slightly more creative/structured than 0.0
             )
         )
@@ -83,11 +86,14 @@ Sections to include:
                 model=model,
                 contents=[prompt],
                 config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
                     temperature=0.0, # More deterministic for fallback
                 )
             )
         except Exception as e2:
             print(f"  [Study Notes] Critical Failure: Text-only fallback also failed: {e2}")
+            from usage_tracker import log_failure
+            log_failure("Notes", media_path.name, str(e2))
             return
 
     try:

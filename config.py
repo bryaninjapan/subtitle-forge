@@ -13,8 +13,14 @@ AUDIO_SAMPLE_RATE = 16000
 # Gemini API Settings
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 TRANSLATION_BATCH_SIZE = 50  # Gemini API handles larger batches efficiently
-TRANSLATION_MAX_CONCURRENT = 5  # Max concurrent API calls for translation batches
+# Concurrency Settings
+ASR_MAX_CONCURRENT = 2          # Number of videos to run ASR on simultaneously
+POST_PROC_MAX_CONCURRENT = 2    # Number of videos to run Notes/Translation on simultaneously
+TRANSLATION_MAX_CONCURRENT = 5  # Max concurrent API calls for translation batches inside one video
 TRANSLATION_MAX_TOKENS = 4096
+TRANSLATION_USE_CACHING = False  # Set to True for very large glossaries (>100 terms)
+DEFAULT_TRANSLATION_STYLE = "academic"  # academic, casual, exam-focused
+SILENCE_THRESHOLD = -40  # Threshold in dB for skip-silence detection
 
 # Vision / Multimodal Settings
 MAX_FRAMES_PER_VIDEO = 50  # Limit number of keyframes sent to Gemini to avoid 400 errors/token limits
@@ -30,9 +36,6 @@ def load_glossary() -> dict:
         except Exception as e:
             print(f"Warning: Failed to load glossary.json: {e}")
     return {}
-
-# ASR 並發數設定
-ASR_MAX_CONCURRENT = 2  # 預設同時處理 2 部影片
 
 TRANSLATION_SYSTEM_PROMPT = """\
 你是專業的教學影片字幕翻譯員與語義優化師。請將以下字幕翻譯為繁體中文。

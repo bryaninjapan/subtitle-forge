@@ -68,19 +68,23 @@ def extract_audio(video_path: Path, output_dir: Path) -> Path:
             print(f"  [skip] Audio already extracted: {audio_path.name}")
         return audio_path
 
+    # Advanced Audio Filtering:
+    # 1. afftdn: FFT-based denoiser to reduce background hiss/noise
+    # 2. loudnorm: EBU R128 loudness normalization
+    # 3. aresample: Ensure 16kHz mono
     cmd = [
         FFMPEG_BIN, "-i", str(video_path),
-        "-map", "0:a:0",
         "-vn",
-        "-acodec", "pcm_s16le",
-        "-ar", str(AUDIO_SAMPLE_RATE),
+        "-af", f"afftdn,loudnorm=I=-16:TP=-1.5:LRA=11,aresample={AUDIO_SAMPLE_RATE}",
         "-ac", "1",
+        "-acodec", "pcm_s16le",
         "-y",
         str(audio_path),
     ]
-    print(f"  Extracting audio: {video_path.name} -> {audio_path.name}")
+    print(f"  Extracting & Denoising audio: {video_path.name} -> {audio_path.name}")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
+        # Fallback to simple extraction if filters fail (older ffmpeg etc)
         cmd_fallback = [
             FFMPEG_BIN, "-i", str(video_path),
             "-vn", "-acodec", "pcm_s16le",
@@ -98,6 +102,23 @@ def extract_audio(video_path: Path, output_dir: Path) -> Path:
         raise RuntimeError(f"Extracted audio file is too small ({audio_path.stat().st_size} bytes). Ffmpeg might have failed silently.")
         
     return audio_path
+
+def check_silence(audio_path: Path, threshold_db: int = -40, min_duration: float = 0.9) -> bool:
+    """Check if the audio file is mostly silent using FFmpeg's silencedetect."""
+    from config import FFMPEG_BIN
+    duration = _get_media_duration_sec(audio_path)
+    if duration <= 0: return True
+        
+    cmd = [FFMPEG_BIN, "-i", str(audio_path), "-af", f"silencedetect=n={threshold_db}dB:d=2", "-f", "null", "-"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    import re
+    silence_durations = re.findall(r"silence_duration: ([\d\.]+)", result.stderr)
+    total_silence = sum(float(d) for d in silence_durations)
+    is_silent = (total_silence / duration) > 0.95
+    if is_silent:
+        print(f"  [Efficiency] Detected high silence ratio ({total_silence:.1f}s / {duration:.1f}s). Skipping API.")
+    return is_silent
 
 
 # ─────────────────────────── Gemini ASR ─────────────────────────────────────
@@ -129,7 +150,7 @@ And this is the second one.
 def _transcribe_with_gemini(
     media_path: Path,
     language: str | None,
-    model: str = "gemini-2.5-flash",
+    model: str = DEFAULT_GEMINI_MODEL,
     retries: int = 3,
     retry_delay: float = 10.0,
 ) -> tuple[str, object]:
@@ -162,6 +183,8 @@ def _transcribe_with_gemini(
                 print(f"  [retry {attempt}] Upload failed: {e}. Retrying in {retry_delay}s...")
                 time.sleep(retry_delay)
             else:
+                from usage_tracker import log_failure
+                log_failure("ASR", media_path.name, str(e))
                 raise
 
     # 2. Wait for ACTIVE state
@@ -186,8 +209,12 @@ def _transcribe_with_gemini(
         
     prompt = _GEMINI_ASR_SYSTEM_PROMPT + lang_instruction + glossary_context
 
+    import random
     for attempt in range(1, retries + 1):
         try:
+            from usage_tracker import check_backoff, signal_backoff
+            check_backoff() # Wave 7: Wait if others hit rate limits
+            
             t1 = time.time()
             response = client.models.generate_content(
                 model=model,
@@ -196,9 +223,11 @@ def _transcribe_with_gemini(
                         file_uri=uploaded_file.uri,
                         mime_type=uploaded_file.mime_type,
                     ),
-                    types.Part.from_text(text=prompt),
                 ],
-                config=types.GenerateContentConfig(temperature=0.0),
+                config=types.GenerateContentConfig(
+                    system_instruction=prompt,
+                    temperature=0.0
+                ),
             )
             print(f"  Transcription done in {time.time() - t1:.1f}s")
             
@@ -210,9 +239,23 @@ def _transcribe_with_gemini(
                 
             return response.text, response.usage_metadata
         except Exception as e:
+            err_str = str(e).lower()
+            is_rate_limit = any(x in err_str for x in ["429", "quota", "resource_exhausted", "limit"])
+            is_overloaded = "503" in err_str or "overloaded" in err_str
+            
+            if is_rate_limit or is_overloaded:
+                base_delay = retry_delay if is_rate_limit else 2.0
+                jitter = random.uniform(0, 1)
+                wait = (base_delay * (2 ** (attempt - 1))) + jitter
+                
+                # Wave 7: Signal others to back off too
+                signal_backoff(wait + 5)
+            else:
+                wait = retry_delay
+
             if attempt < retries:
-                print(f"  [retry {attempt}] Generation failed: {e}. Retrying in {retry_delay}s...")
-                time.sleep(retry_delay)
+                print(f"  [retry {attempt}] Generation failed: {e}. Retrying in {wait:.1f}s...")
+                time.sleep(wait)
             else:
                 # Still try to delete if possible
                 try: client.files.delete(name=uploaded_file.name)
@@ -265,18 +308,28 @@ def transcribe_files(
                 print(f"  [audio-only] Extracting audio to reduce token usage (~9x savings)...")
                 upload_path = extract_audio(media_path, out_dir)
 
+            # Wave 9: Efficiency - Skip silence
+            from config import SILENCE_THRESHOLD
+            if check_silence(upload_path, threshold_db=SILENCE_THRESHOLD):
+                print(f"  [skip] File {media_path.name} is mostly silent.")
+                continue
+
             raw_srt, usage_meta = _transcribe_with_gemini(upload_path, language, gemini_model)
 
             if usage_meta:
                 log_usage("ASR", media_path.name, usage_meta.prompt_token_count, usage_meta.candidates_token_count)
                 print(f"  Token Usage (ASR): Input={usage_meta.prompt_token_count}, Output={usage_meta.candidates_token_count}, Total={usage_meta.total_token_count}")
 
-            # Write full SRT file
-            srt_path.write_text(raw_srt, encoding="utf-8")
+            # Write full SRT file (cleaned)
+            from srt_utils import clean_subtitle_text, write_srt
+            entries = parse_srt(raw_srt)
+            for e in entries:
+                e.text = clean_subtitle_text(e.text)
+            
+            write_srt(entries, srt_path)
             print(f"  Saved: {srt_path.name}")
 
             # Also write plain TXT
-            entries = parse_srt(raw_srt)
             plain_text = " ".join(e.text for e in entries)
             txt_path.write_text(plain_text + "\n", encoding="utf-8")
             print(f"  Saved: {txt_path.name}")

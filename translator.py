@@ -57,37 +57,98 @@ def _translate_batch_gemini(
     retries: int = 3,
     retry_delay: float = 10.0,
     glossary: dict | None = None,
+    cached_content_name: str | None = None,
+    style: str = "academic",
 ) -> tuple[str, object]:
     """Send a single batch of subtitle lines to Gemini. Thread-safe."""
     from google.genai import types
 
-    # Prepare glossary text
-    current_glossary = glossary or {}
-    glossary_lines = [f"- {k} -> {v}" for k, v in current_glossary.items()]
-    glossary_text = "\n".join(glossary_lines)
+    system_instruction = None
+    if not cached_content_name:
+        # Prepare glossary text
+        current_glossary = glossary or {}
+        glossary_lines = [f"- {k} -> {v}" for k, v in current_glossary.items()]
+        glossary_text = "\n".join(glossary_lines)
+        
+        system_instruction = TRANSLATION_SYSTEM_PROMPT.format(glossary_text=glossary_text)
+        system_instruction += f"\nTranslation Style: {style.upper()} - Use appropriate tone and professional terminology."
+        system_instruction += "\nOutput MUST be a JSON list of objects: [{\"index\": 1, \"text\": \"translation\"}, ...]"
     
-    system_prompt = TRANSLATION_SYSTEM_PROMPT.format(glossary_text=glossary_text)
-    prompt = f"{system_prompt}\n\n{batch_text}"
-
+    import random
+    
     for attempt in range(1, retries + 1):
         try:
+            from usage_tracker import check_backoff, signal_backoff
+            check_backoff() # Wave 7: Wait if others hit rate limits
+            
+            config_params = {
+                "temperature": 0.1,
+                "max_output_tokens": 4096,
+                "response_mime_type": "application/json",
+            }
+            if system_instruction:
+                config_params["system_instruction"] = system_instruction
+            if cached_content_name:
+                config_params["cached_content"] = cached_content_name
+
             response = client.models.generate_content(
                 model=model,
-                contents=prompt,
+                contents=batch_text,
+                config=types.GenerateContentConfig(**config_params),
+            )
+            # Stage 2: Reflective QA Loop
+            qa_system_instruction = f"""
+You are a CFA quality control editor. Review the JSON translation for:
+1. Glossary adherence ({glossary_text})
+2. Professional terminology
+3. Phrasing errors
+
+Output corrected JSON in the same format.
+            """
+            
+            qa_response = client.models.generate_content(
+                model=model,
+                contents=response.text,
                 config=types.GenerateContentConfig(
-                    temperature=0.1,
+                    system_instruction=qa_system_instruction,
+                    temperature=0.0, # Strict check
                     max_output_tokens=4096,
+                    response_mime_type="application/json",
                 ),
             )
-            return response.text, response.usage_metadata
+            
+            # Combine usage
+            total_usage = response.usage_metadata
+            if qa_response.usage_metadata:
+                total_usage.prompt_token_count += qa_response.usage_metadata.prompt_token_count
+                total_usage.candidates_token_count += qa_response.usage_metadata.candidates_token_count
+                total_usage.total_token_count += qa_response.usage_metadata.total_token_count
+                
+            return qa_response.text, total_usage
+
         except Exception as e:
             err_str = str(e).lower()
-            # Rate limit: wait longer before retrying
-            wait = retry_delay * (2 ** (attempt - 1)) if "429" in err_str or "quota" in err_str else retry_delay
+            # Exponential Backoff with Jitter: base * 2^attempt + random_jitter
+            # Target 429 Too Many Requests / Overloaded
+            is_rate_limit = any(x in err_str for x in ["429", "quota", "resource_exhausted", "limit"])
+            is_overloaded = "503" in err_str or "overloaded" in err_str
+            
+            if is_rate_limit or is_overloaded:
+                base_delay = retry_delay if is_rate_limit else 2.0
+                jitter = random.uniform(0, 1)
+                wait = (base_delay * (2 ** (attempt - 1))) + jitter
+                
+                # Wave 7: Signal global backoff
+                signal_backoff(wait + 2)
+            else:
+                wait = retry_delay
+
             if attempt < retries:
-                print(f"  [retry {attempt}/{retries}] Batch {batch_index}/{total_batches}: {e} — retrying in {wait:.0f}s")
+                print(f"  [retry {attempt}/{retries}] Batch {batch_index}/{total_batches}: {e} — retrying in {wait:.1f}s")
                 time.sleep(wait)
             else:
+                from usage_tracker import log_failure
+                log_failure("Translation", f"Batch {batch_index}", str(e))
                 raise
 
 
@@ -120,6 +181,30 @@ def translate_srt_files(
     
     # Reload glossary once at the start
     current_glossary = load_glossary()
+    
+    # Wave 6: Context Caching Logic
+    from config import TRANSLATION_USE_CACHING
+    cached_content_name = None
+    if TRANSLATION_USE_CACHING and len(current_glossary) > 50:
+        print(f"  [Cache] Large glossary detected ({len(current_glossary)} terms). Creating context cache...")
+        try:
+            from google.genai import types
+            glossary_lines = [f"- {k} -> {v}" for k, v in current_glossary.items()]
+            glossary_text = "\n".join(glossary_lines)
+            cache_instruction = TRANSLATION_SYSTEM_PROMPT.format(glossary_text=glossary_text)
+            
+            # Create a 1-hour cache for this session
+            cache = client.caches.create(
+                model=gemini_model,
+                config=types.CreateCachedContentConfig(
+                    system_instruction=cache_instruction,
+                    ttl="3600s",
+                ),
+            )
+            cached_content_name = cache.name
+            print(f"  [Cache] Created: {cached_content_name}")
+        except Exception as e:
+            print(f"  [Cache] Failed to create cache: {e}. Falling back to standard requests.")
 
     for i, (media_path, srt_path) in enumerate(srt_mapping.items(), 1):
         zh_srt_path = srt_path.parent / f"{media_path.stem}.zh.srt"
@@ -134,10 +219,11 @@ def translate_srt_files(
         
         # --- PHASE 2: AI Auto-Learning Mode ---
         # Scan the transcript and update the glossary JSON automatically
+        # Note: If catching is used, auto-learning won't update the cache mid-run.
         try:
             update_glossary_auto(srt_path)
-            # Re-load the glossary so the upcoming translation uses the newly found terms
-            current_glossary = load_glossary()
+            if not cached_content_name: # Only reload if not using a fixed cache
+                current_glossary = load_glossary()
         except Exception as e:
             print(f"  [Glossary] Auto-update skipped: {e}")
 
@@ -170,7 +256,8 @@ def translate_srt_files(
                         batch_text,
                         bi,
                         total,
-                        glossary=current_glossary,
+                        glossary=current_glossary if not cached_content_name else None,
+                        style=os.environ.get("TRANSLATION_STYLE", "academic")
                     )
                     ordered_futures.append((bi, batch, future))
 

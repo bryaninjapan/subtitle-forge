@@ -16,9 +16,31 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+import signal
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, Future, as_completed, wait
 
 from config import INPUT_DIR, OUTPUT_DIR
+
+
+def signal_handler(sig, frame):
+    print("\n\n[SIGNAL] Interrupt received (Ctrl+C). Cleaning up before exiting...")
+    # Attempt to clean up known WAV files in a best-effort way
+    # We don't have access to all state here easily, but we can scan OUTPUT_DIR
+    try:
+        from config import OUTPUT_DIR
+        for wav in OUTPUT_DIR.rglob("*.wav"):
+            try:
+                wav.unlink()
+                print(f"  [cleanup] Removed: {wav.name}")
+            except:
+                pass
+    except:
+        pass
+    print("Exiting.")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
 
 
 def find_media_files(input_paths: list[Path]) -> list[Path]:
@@ -77,6 +99,12 @@ def _print_summary(start_time: float, count: int) -> None:
     if totals:
         print(f"Total Token Usage: {totals.get('total', 0):,}")
         print(f"Estimated Total Cost: ${totals.get('cost', 0):.4f} USD")
+    
+    from config import load_glossary
+    gloss = load_glossary()
+    if gloss:
+        print(f"Terminology Glossary: {len(gloss)} terms")
+        
     print(f"Output directory: {OUTPUT_DIR}")
     print(f"{'='*60}")
 
@@ -94,12 +122,11 @@ def run_pipeline(
     ASR->Translation pipeline where Video N's translation starts immediately
     after its ASR completes while Video N+1's ASR begins concurrently.
     """
-    from concurrent.futures import ThreadPoolExecutor, Future, as_completed
     from asr_engine import transcribe_files
     from translator import translate_srt_files
     from notes_generator import generate_study_notes
     from vision_engine import extract_keyframes
-    from config import ASR_MAX_CONCURRENT, OUTPUT_DIR
+    from config import ASR_MAX_CONCURRENT, POST_PROC_MAX_CONCURRENT, OUTPUT_DIR
 
     start_time = time.time()
 
@@ -221,14 +248,14 @@ def run_pipeline(
         return
 
     # ── Multi-video: overlap ASR(N+1) with Translation(N) ────────────────────
-    print(f"\n⚡ Pipeline mode: {ASR_MAX_CONCURRENT}x ASR and 1x Translation across {len(media_files)} videos.\n")
+    print(f"\n⚡ Pipeline mode: {ASR_MAX_CONCURRENT}x ASR and {POST_PROC_MAX_CONCURRENT}x Post-processing across {len(media_files)} videos.\n")
 
     all_results_count = 0
     post_proc_futures: list[Future] = []
+    video_start_times: dict[Path, float] = {}
 
     # Use a pool for post-processing (Notes + Translation)
-    # Increase workers slightly to allow simultaneous processing of multiple video's post-tasks
-    post_proc_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="post_proc")
+    post_proc_pool = ThreadPoolExecutor(max_workers=POST_PROC_MAX_CONCURRENT, thread_name_prefix="post_proc")
     asr_pool = ThreadPoolExecutor(max_workers=ASR_MAX_CONCURRENT, thread_name_prefix="asr")
 
     lock = __import__("threading").Lock()
@@ -262,9 +289,21 @@ def run_pipeline(
             print(f"  [pipeline] [skip] Translation exists for '{media_path.name}'")
         else:
             try:
+                # Wave 9: Style
+                os.environ["TRANSLATION_STYLE"] = getattr(args, "style", "academic")
                 translate_srt_files({media_path: srt_path})
             except Exception as e:
                 print(f"  [pipeline] Translation failed for {media_path.name}: {e}")
+
+        # 3. Chapters (Wave 9)
+        if getattr(args, "chapters", False):
+            try:
+                from chapter_generator import generate_video_chapters
+                txt_path = out_dir / f"{media_path.stem}.txt"
+                if txt_path.exists():
+                    generate_video_chapters(media_path, txt_path)
+            except Exception as e:
+                print(f"  [pipeline] Chapters failed for {media_path.name}: {e}")
 
     def process_video_task(v_path: Path):
         nonlocal all_results_count
@@ -281,17 +320,32 @@ def run_pipeline(
             with lock:
                 all_results_count += len(srt_mapping)
 
+            # ETA calculation support
+            video_end_time = time.time()
+            v_duration = video_end_time - video_start_times.get(v_path, video_end_time)
+            
+            with lock:
+                processed_count = all_results_count
+                total_to_process = len(media_files)
+                avg_time = (video_end_time - start_time) / processed_count
+                remaining = total_to_process - processed_count
+                eta_sec = avg_time * remaining
+                eta_str = f"{int(eta_sec//60)}m {int(eta_sec%60)}s" if eta_sec > 0 else "N/A"
+                print(f"  [pipeline] ASR for '{v_path.name}' done in {v_duration:.1f}s. (ETA Remaining: {eta_str})")
+
             # ASR is DONE. Now offload Notes + Translation to the post_proc_pool
-            # This allows the ASR pool to start the next video's ASR immediately.
             future = post_proc_pool.submit(post_processing_task, v_path, srt_path)
-            print(f"  [pipeline] ▶ ASR for '{v_path.name}' done. Notes & Translation offloaded.")
             return future
         else:
             print(f"  [pipeline] ✗ ASR failed for '{v_path.name}'.")
             return None
 
     try:
-        asr_futures = [asr_pool.submit(process_video_task, vp) for vp in media_files]
+        asr_futures = []
+        for i, vp in enumerate(media_files, 1):
+            video_start_times[vp] = time.time()
+            print(f"\n{'='*20} [{i}/{len(media_files)}] Processing: {vp.name} {'='*20}")
+            asr_futures.append(asr_pool.submit(process_video_task, vp))
 
         for f in as_completed(asr_futures):
             pp_future = f.result()
@@ -359,7 +413,36 @@ def main() -> None:
         action="store_true",
         help="Scan all existing transcripts in output/ and update glossary.json",
     )
+    parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Delete all temporary .wav files in output directory and exit",
+    )
+    parser.add_argument(
+        "--style",
+        type=str,
+        default="academic",
+        choices=["academic", "casual", "exam-focused"],
+        help="Translation style (Wave 9)",
+    )
+    parser.add_argument(
+        "--chapters",
+        action="store_true",
+        help="Generate automatic video chapters based on transcript (Wave 9)",
+    )
     args = parser.parse_args()
+
+    if args.cleanup:
+        print("\n[Cleanup] Cleaning up all temporary .wav files in output/...")
+        count = 0
+        for wav in OUTPUT_DIR.rglob("*.wav"):
+            try:
+                wav.unlink()
+                count += 1
+            except Exception as e:
+                print(f"  Failed: {wav.name}: {e}")
+        print(f"Done. Removed {count} file(s).")
+        return
 
     if args.asr_only and args.translate_only:
         print("Error: Cannot use --asr-only and --translate-only together.")
