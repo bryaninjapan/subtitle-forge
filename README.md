@@ -4,14 +4,25 @@ CFA 教學影片自動化處理工具，透過 Gemini API 完成語音辨識、�
 
 ---
 
-## 它在做什麼
+## 核心優化功能
 
-把影片丟進去，自動幫你：
-1. **提取音訊** → 轉成 WAV（省 token，不上傳整個影片）
-2. **語音辨識** → 上傳到 Gemini，生成帶時間軸的英文字幕 (.srt) 和純文字稿 (.txt)
-3. **截取投影片** → 每 5 分鐘截一張關鍵畫面
-4. **生成學習筆記** → 根據逐字稿產出繁體中文 CFA 重點整理 (.md)
-5. **翻譯字幕** → 批次送 Gemini 翻譯，輸出繁體中文字幕 (.zh.srt)
+本專案已針對大規模批次處理進行了深度優化，具備工業級的穩定性與產出品質：
+
+### 1. 智慧管線與穩定性
+*   **啟動預檢 (Pre-flight Check)**：自動檢查 `ffmpeg` 與 `ffprobe` 環境，確保工具就緒。
+*   **斷點續傳 (Checkpointing)**：自動跳過已完成的 ASR、翻譯或筆記生成步驟，支援中斷後無縫恢復。
+*   **雙重並發 (Dual-Pool Concurrency)**：分離 ASR 運算與後處理（翻譯/筆記），極大化 GPU/API 吞吐量。
+*   **失敗回退 (Fallback)**：多模態筆記生成失敗時自動重試「純文字模式」，確保任務不中斷。
+
+### 2. 高品質產出
+*   **術語感知 ASR (Glossary-Aware)**：轉錄時主動參考 `glossary.json`，精準識別 CFA 專有名詞。
+*   **智慧場景偵測 (Scene-Change Detection)**：改用 FFmpeg 偵測畫面變動（如投影片翻頁）擷取畫面，不再有冗餘截圖。
+*   **跨批次語境翻譯 (Contextual Translation)**：翻譯時參考前一區塊的語境，解決分段翻譯導致的口吻不連貫。
+*   **SRT 自動修復 (Normalization)**：自動校正時間軸、序號與標點格式，確保播放器 100% 相容。
+
+### 3. 資源效率
+*   **自動清理 (Auto-Cleanup)**：任務完成後自動刪除巨大的臨時音檔 (`.wav`)，節省 90% 以上磁碟空間。
+*   **音訊優先 ASR**：僅上傳 16kHz WAV 到 Gemini，較上傳影片節省約 9 倍 Token 消耗。
 
 ---
 
@@ -22,56 +33,45 @@ CFA 教學影片自動化處理工具，透過 Gemini API 完成語音辨識、�
        │
        ▼
 ┌─────────────────────────────────────────────────┐
-│  ffmpeg 提取音訊                                 │
-│  video.mp4  →  video.wav                        │
-│  (節省 ~90% token，從 17K/min 降到 2K/min)       │
+│  環境預檢 (ffmpeg/ffprobe Verify)                │
 └──────────────────┬──────────────────────────────┘
                    │
                    ▼
 ┌─────────────────────────────────────────────────┐
-│  Gemini ASR（語音辨識）                          │
-│  上傳 .wav → 取得逐字稿                          │
-│  輸出：video.srt  +  video.txt                  │
+│  ffmpeg 提取音訊 (WAV 16kHz)                     │
+│  (節省 ~90% token，資源清理機制保護)              │
+└──────────────────┬──────────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────┐
+│  Gemini ASR + Glossary 輔助                      │
+│  輸入：.wav + glossary.json                      │
+│  輸出：video.srt + video.txt                    │
 └──────────┬──────────────────┬───────────────────┘
            │                  │
            ▼                  ▼
 ┌──────────────────┐  ┌───────────────────────────┐
-│  ffmpeg 截幀     │  │  Glossary 術語掃描          │
-│  每 5 分鐘一張   │  │  從逐字稿找新的 CFA 術語    │
-│  → frames/       │  │  自動更新 glossary.json     │
+│  智慧場景偵測截幀 │  │  Glossary 自動學習          │
+│  偵測投影片翻頁   │  │  從逐字稿抓取新術語         │
+│  → frames/       │  │  防止併發寫入衝突           │
 └────────┬─────────┘  └──────────────┬────────────┘
-         │                           │
-         ▼                           ▼
+          │                           │
+          ▼                           ▼
 ┌─────────────────────────────────────────────────┐
-│  Gemini 生成學習筆記                             │
-│  逐字稿 + 投影片截圖 → 繁中 CFA 重點整理         │
-│  輸出：video_StudyNotes.md                       │
+│  Gemini 多模態筆記生成 (備有 Text-only Fallback)  │
+│  逐字稿 + 場景截圖 → 繁中 CFA 重點整理           │
+│  輸出：_StudyNotes.md                           │
 └──────────────────┬──────────────────────────────┘
                    │
                    ▼
 ┌─────────────────────────────────────────────────┐
-│  Gemini 批次翻譯字幕                             │
-│  每批 50 條，最多 5 個並發請求                   │
-│  輸出：video.zh.srt                              │
+│  跨語境批次翻譯 (.zh.srt)                        │
+│  Batch N + Batch N-1 Context                    │
 └──────────────────┬──────────────────────────────┘
                    │
                    ▼
-             output/ 輸出完成
+       清理暫存檔 & 產出 Dashboard 統計
 ```
-
-### 多影片並行策略
-
-一次處理多部影片時，流程會交錯執行以節省時間：
-
-```
-影片 1: [──ASR──][──Notes──] → [翻譯等待中]
-影片 2:          [──ASR──][──Notes──] → [翻譯等待中]
-影片 3:                   [──ASR──][──Notes──] → [翻譯]
-                                                  ↓
-                                          [翻譯 1][翻譯 2][翻譯 3]
-```
-
-同時最多 **2 部影片** 並行跑 ASR，翻譯由單一 worker 依序執行。
 
 ---
 
@@ -80,14 +80,12 @@ CFA 教學影片自動化處理工具，透過 Gemini API 完成語音辨識、�
 ```
 output/
 └── {影片名稱}/
-    ├── {影片名稱}.wav               ← 提取的音訊（快取，重跑不重傳）
-    ├── {影片名稱}.srt               ← 原文字幕（帶時間軸）
+    ├── {影片名稱}.srt               ← 原文字幕（帶時間軸，已 Normalization）
     ├── {影片名稱}.txt               ← 純文字逐字稿
-    ├── {影片名稱}.zh.srt            ← 繁體中文字幕
-    ├── {影片名稱}_StudyNotes.md     ← CFA 學習筆記
+    ├── {影片名稱}.zh.srt            ← 繁體中文字幕（具語境連貫性）
+    ├── {影片名稱}_StudyNotes.md     ← CFA 學習筆記（結合影像分析）
     └── frames/
-        ├── frame_001.jpg            ← 投影片截圖（每 5 分鐘）
-        ├── frame_002.jpg
+        ├── frame_001.jpg            ← 智慧偵測到的場景變換畫面
         └── ...
 ```
 
@@ -96,6 +94,69 @@ output/
 ## 環境需求
 
 - Python 3.10+
+- **ffmpeg & ffprobe**（`brew install ffmpeg`）
+- Gemini API Key（`export GEMINI_API_KEY=your_key`）
+
+---
+
+## 安裝
+
+```bash
+git clone https://github.com/your-repo/subtitle-forge.git
+cd subtitle-forge
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+---
+
+## 使用方式
+
+### 基本命令
+
+```bash
+# 處理所有影片（自動檢查斷點、自動清理）
+python main.py
+
+# 指定輸入
+python main.py --input video.mp4
+
+# 跳過視覺分析（純文字處理）
+python main.py --no-vision
+```
+
+---
+
+## 術語表管理 (glossary.json)
+
+翻譯與 ASR 引擎共享的知識庫。
+- **寫鎖保護**：支援多影片同時更新術語表而不損毀檔案。
+- **手動同步**：`python main.py --update-glossary`。
+
+---
+
+## 技術棧
+
+| 功能 | 工具 |
+|-----|-----|
+| AI 引擎 | Google Gemini API (`gemini-2.5-flash`) |
+| 影音處理 | FFmpeg (Scene detection, Audio Extract) |
+| 並發架構 | `ThreadPoolExecutor` (ASR & Post-proc 雙池) |
+| 穩定性 | Exponential Backoff Retries, Checkpointing |
+
+---
+
+## 專案結構
+
+- `main.py`: 核心調度，具備音檔清理與斷點邏輯。
+- `asr_engine.py`: 術語感知的轉錄引擎。
+- `vision_engine.py`: 基於場景變動的智慧截圖系統。
+- `notes_generator.py`: 多模態/純文本回退筆記生成。
+- `translator.py`: 支援跨批次語境參考的翻譯器。
+- `srt_utils.py`: SRT 解析與工業級 Normalization 工具。
+- `usage_tracker.py`: 自動產生專案總結 Dashboard。
+ython 3.10+
 - ffmpeg（`brew install ffmpeg`）
 - Gemini API Key（`export GEMINI_API_KEY=your_key`）
 

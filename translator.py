@@ -159,7 +159,10 @@ def translate_srt_files(
             ordered_futures: list[tuple[int, list[SrtEntry], object]] = []
             with ThreadPoolExecutor(max_workers=TRANSLATION_MAX_CONCURRENT) as executor:
                 for bi, batch in enumerate(batches, 1):
-                    batch_text = format_batch_for_translation(batch)
+                    # For context, we take the last 3 lines of the previous batch
+                    context = batches[bi-2][-3:] if bi > 1 else None
+                    
+                    batch_text = format_batch_for_translation(batch, context=context)
                     future = executor.submit(
                         _translate_batch_gemini,
                         client,

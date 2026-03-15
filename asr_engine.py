@@ -43,6 +43,20 @@ def _get_media_duration_sec(path: Path) -> float:
     return 0.0
 
 
+def check_dependencies() -> None:
+    """Ensure ffmpeg and ffprobe are installed and available."""
+    from config import FFMPEG_BIN
+    for tool in [FFMPEG_BIN, "ffprobe"]:
+        try:
+            subprocess.run([tool, "-version"], capture_output=True, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print(f"\n[CRITICAL ERROR] '{tool}' not found!")
+            print(f"Subtitle Forge requires {tool} to process video and audio.")
+            print("Please install ffmpeg (e.g., 'brew install ffmpeg' on macOS).")
+            sys.exit(1)
+    print("  [Init] Dependencies check passed: ffmpeg/ffprobe found.")
+
+
 def extract_audio(video_path: Path, output_dir: Path) -> Path:
     """Extract full audio from video to 16kHz mono WAV."""
     audio_path = output_dir / f"{video_path.stem}.wav"
@@ -78,6 +92,11 @@ def extract_audio(video_path: Path, output_dir: Path) -> Path:
     dur = _get_media_duration_sec(audio_path)
     if dur > 0:
         print(f"  Extracted duration: {dur / 60:.1f} min")
+    
+    # Check if file size is reasonable (not 0 bytes)
+    if audio_path.stat().st_size < 1000:
+        raise RuntimeError(f"Extracted audio file is too small ({audio_path.stat().st_size} bytes). Ffmpeg might have failed silently.")
+        
     return audio_path
 
 
@@ -105,87 +124,100 @@ And this is the second one.
 """
 
 
-_MIME_TYPES: dict[str, str] = {
-    # Video
-    ".mp4": "video/mp4",
-    ".mkv": "video/x-matroska",
-    ".avi": "video/x-msvideo",
-    ".mov": "video/quicktime",
-    ".webm": "video/webm",
-    ".m4v": "video/mp4",
-    ".ts": "video/mp2t",
-    # Audio
-    ".wav": "audio/wav",
-    ".mp3": "audio/mpeg",
-    ".flac": "audio/flac",
-    ".m4a": "audio/mp4",
-    ".ogg": "audio/ogg",
-    ".aac": "audio/aac",
-}
 
 
 def _transcribe_with_gemini(
     media_path: Path,
     language: str | None,
     model: str = "gemini-2.5-flash",
-) -> str:
-    """Upload media file to Gemini and return raw SRT string."""
+    retries: int = 3,
+    retry_delay: float = 10.0,
+) -> tuple[str, object]:
+    """Upload media file to Gemini and return raw SRT string with retry logic."""
     from google import genai
     from google.genai import types
+    from config import MIME_TYPES
 
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable is not set.")
 
     client = genai.Client(api_key=api_key)
+    mime_type = MIME_TYPES.get(media_path.suffix.lower(), "video/mp4")
 
-    mime_type = _MIME_TYPES.get(media_path.suffix.lower(), "video/mp4")
-    print(f"  Uploading to Gemini Files API: {media_path.name} ({mime_type})")
-    t0 = time.time()
-    uploaded_file = client.files.upload(
-        file=media_path,
-        config={"mime_type": mime_type},
-    )
-    upload_time = time.time() - t0
+    # 1. Upload with retry
+    uploaded_file = None
+    for attempt in range(1, retries + 1):
+        try:
+            print(f"  Uploading to Gemini (attempt {attempt}): {media_path.name}...")
+            t0 = time.time()
+            uploaded_file = client.files.upload(
+                file=media_path,
+                config={"mime_type": mime_type},
+            )
+            print(f"  Upload successful ({time.time() - t0:.1f}s). Waiting for processing...", end="", flush=True)
+            break
+        except Exception as e:
+            if attempt < retries:
+                print(f"  [retry {attempt}] Upload failed: {e}. Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+            else:
+                raise
 
-    # Poll until file is ACTIVE
-    print(f"  Upload successful ({upload_time:.1f}s). Waiting for Gemini to process...", end="", flush=True)
-
+    # 2. Wait for ACTIVE state
     while uploaded_file.state and uploaded_file.state.name == "PROCESSING":
         time.sleep(5)
         print(".", end="", flush=True)
         uploaded_file = client.files.get(name=uploaded_file.name)
     print(" Done.")
 
+    # 3. Request transcription with retry
     lang_instruction = ""
     if language:
         lang_instruction = f"\nThe audio language is {language}. Transcribe in {language}."
-    prompt = _GEMINI_ASR_SYSTEM_PROMPT + lang_instruction
+    
+    # Add glossary context if available
+    from config import load_glossary
+    glossary = load_glossary()
+    glossary_context = ""
+    if glossary:
+        terms = ", ".join(f"{k} ({v})" for k, v in glossary.items())
+        glossary_context = f"\n\nContext & Technical Terms to recognize:\n{terms}"
+        
+    prompt = _GEMINI_ASR_SYSTEM_PROMPT + lang_instruction + glossary_context
 
-    t1 = time.time()
-    response = client.models.generate_content(
-        model=model,
-        contents=[
-            types.Part.from_uri(
-                file_uri=uploaded_file.uri,
-                mime_type=uploaded_file.mime_type,
-            ),
-            types.Part.from_text(text=prompt),
-        ],
-        config=types.GenerateContentConfig(
-            temperature=0.0,
-        ),
-    )
-    transcription_time = time.time() - t1
-    print(f"  Transcription done in {transcription_time:.1f}s")
-
-    # Clean up uploaded file to free quota
-    try:
-        client.files.delete(name=uploaded_file.name)
-    except Exception:
-        pass
-
-    return response.text, response.usage_metadata
+    for attempt in range(1, retries + 1):
+        try:
+            t1 = time.time()
+            response = client.models.generate_content(
+                model=model,
+                contents=[
+                    types.Part.from_uri(
+                        file_uri=uploaded_file.uri,
+                        mime_type=uploaded_file.mime_type,
+                    ),
+                    types.Part.from_text(text=prompt),
+                ],
+                config=types.GenerateContentConfig(temperature=0.0),
+            )
+            print(f"  Transcription done in {time.time() - t1:.1f}s")
+            
+            # Clean up
+            try:
+                client.files.delete(name=uploaded_file.name)
+            except Exception:
+                pass
+                
+            return response.text, response.usage_metadata
+        except Exception as e:
+            if attempt < retries:
+                print(f"  [retry {attempt}] Generation failed: {e}. Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+            else:
+                # Still try to delete if possible
+                try: client.files.delete(name=uploaded_file.name)
+                except: pass
+                raise
 
 
 # ─────────────────────────── Public API ─────────────────────────────────────

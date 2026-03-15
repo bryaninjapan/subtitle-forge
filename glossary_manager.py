@@ -4,6 +4,9 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 from config import DEFAULT_GEMINI_MODEL
+import threading
+
+_glossary_lock = threading.Lock()
 
 def extract_terms_with_ai(transcript_text: str, current_glossary: dict) -> dict:
     """Ask Gemini to identify key financial terms and suggest translations."""
@@ -60,22 +63,23 @@ def update_glossary_auto(srt_path: Path):
         return
 
     # 2. Load current
-    current = load_glossary()
-    
-    # 3. Get new terms from AI
-    print(f"  [Glossary] Scanning '{srt_path.name}' for new financial terms...")
-    new_terms = extract_terms_with_ai(text, current)
-    
-    if new_terms:
-        # 4. Merge
-        added_count = 0
-        for k, v in new_terms.items():
-            if k not in current:
-                current[k] = v
-                added_count += 1
-                print(f"    + New term: {k} -> {v}")
+    with _glossary_lock:
+        current = load_glossary()
         
-        if added_count > 0:
-            # 5. Save back to file
-            GLOSSARY_PATH.write_text(json.dumps(current, ensure_ascii=False, indent=4), encoding="utf-8")
-            print(f"  [Glossary] Automatically added {added_count} new terms to glossary.json")
+        # 3. Get new terms from AI
+        print(f"  [Glossary] Scanning '{srt_path.name}' for new financial terms...")
+        new_terms = extract_terms_with_ai(text, current)
+        
+        if new_terms:
+            # 4. Merge
+            added_count = 0
+            for k, v in new_terms.items():
+                if k not in current:
+                    current[k] = v
+                    added_count += 1
+                    print(f"    + New term: {k} -> {v}")
+            
+            if added_count > 0:
+                # 5. Save back to file
+                GLOSSARY_PATH.write_text(json.dumps(current, ensure_ascii=False, indent=4), encoding="utf-8")
+                print(f"  [Glossary] Automatically added {added_count} new terms to glossary.json")

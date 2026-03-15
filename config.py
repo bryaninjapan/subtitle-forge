@@ -16,6 +16,9 @@ TRANSLATION_BATCH_SIZE = 50  # Gemini API handles larger batches efficiently
 TRANSLATION_MAX_CONCURRENT = 5  # Max concurrent API calls for translation batches
 TRANSLATION_MAX_TOKENS = 4096
 
+# Vision / Multimodal Settings
+MAX_FRAMES_PER_VIDEO = 50  # Limit number of keyframes sent to Gemini to avoid 400 errors/token limits
+
 # 金融/技術術語對照表 (由 glossary.json 讀取)
 GLOSSARY_PATH = BASE_DIR / "glossary.json"
 
@@ -44,3 +47,22 @@ TRANSLATION_SYSTEM_PROMPT = """\
 請嚴格遵守以下術語對接（原文 -> 繁體中文）：
 {glossary_text}\
 """
+# MIME Types mapping
+MIME_TYPES = {
+    # Video
+    ".mp4": "video/mp4",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".flv": "video/flv",
+    ".m4v": "video/mp4",
+    ".ts": "video/mp2t",
+    # Audio
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+    ".ogg": "audio/ogg",
+    ".aac": "audio/aac",
+}

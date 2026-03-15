@@ -67,9 +67,16 @@ def _print_summary(start_time: float, count: int) -> None:
     elapsed = time.time() - start_time
     minutes = int(elapsed // 60)
     seconds = int(elapsed % 60)
+    from usage_tracker import get_total_usage
     from config import OUTPUT_DIR
+    
+    totals = get_total_usage()
+    
     print(f"\n{'='*60}")
     print(f"Done! Processed {count} file(s) in {minutes}m {seconds}s")
+    if totals:
+        print(f"Total Token Usage: {totals.get('total', 0):,}")
+        print(f"Estimated Total Cost: ${totals.get('cost', 0):.4f} USD")
     print(f"Output directory: {OUTPUT_DIR}")
     print(f"{'='*60}")
 
@@ -162,18 +169,54 @@ def run_pipeline(
         print(f"\nDone! Checked {count} video directory(s).")
         return
 
+    def _cleanup_wav(media_path: Path):
+        """Delete temporary WAV file if process is fully complete."""
+        wav_path = OUTPUT_DIR / media_path.stem / f"{media_path.stem}.wav"
+        if wav_path.exists():
+            try:
+                wav_path.unlink()
+                print(f"  [cleanup] Removed temporary audio: {wav_path.name}")
+            except Exception as e:
+                print(f"  [cleanup] Failed to remove {wav_path.name}: {e}")
+
     # ── Single video: simple sequential flow ─────────────────────────────────
     if len(media_files) == 1:
-        srt_mapping = transcribe_files(media_files, language=language)
+        v_path = media_files[0]
+        srt_path = OUTPUT_DIR / v_path.stem / f"{v_path.stem}.srt"
+        zh_srt_path = OUTPUT_DIR / v_path.stem / f"{v_path.stem}.zh.srt"
+        notes_path = OUTPUT_DIR / v_path.stem / f"{v_path.stem}_StudyNotes.md"
+        
+        # 1. ASR
+        srt_mapping = {}
+        if srt_path.exists():
+            print(f"  [skip] ASR already done: {srt_path.name}")
+            srt_mapping = {v_path: srt_path}
+        else:
+            srt_mapping = transcribe_files([v_path], language=language)
+        
+        # 2. Notes & Translation
         if srt_mapping:
-            for media_path in srt_mapping:
+            # Study Notes Checkpoint
+            if notes_path.exists():
+                print(f"  [skip] Study notes already exist: {notes_path.name}")
+            else:
                 frames = []
                 if not getattr(args, 'no_vision', False):
-                    frames = extract_keyframes(media_path, OUTPUT_DIR / media_path.stem)
-                txt_path = OUTPUT_DIR / media_path.stem / f"{media_path.stem}.txt"
+                    frames = extract_keyframes(v_path, OUTPUT_DIR / v_path.stem)
+                txt_path = OUTPUT_DIR / v_path.stem / f"{v_path.stem}.txt"
                 if txt_path.exists():
-                    generate_study_notes(media_path, txt_path.read_text(encoding="utf-8"), frame_paths=frames)
-            translate_srt_files(srt_mapping)
+                    generate_study_notes(v_path, txt_path.read_text(encoding="utf-8"), frame_paths=frames)
+            
+            # Translation Checkpoint
+            if zh_srt_path.exists():
+                print(f"  [skip] Translation already exists: {zh_srt_path.name}")
+            else:
+                translate_srt_files(srt_mapping)
+                
+            # Final Cleanup
+            if zh_srt_path.exists():
+                _cleanup_wav(v_path)
+                
         _print_summary(start_time, len(srt_mapping) if srt_mapping else 0)
         return
 
@@ -181,38 +224,67 @@ def run_pipeline(
     print(f"\n⚡ Pipeline mode: {ASR_MAX_CONCURRENT}x ASR and 1x Translation across {len(media_files)} videos.\n")
 
     all_results_count = 0
-    translation_futures: list[Future] = []
+    post_proc_futures: list[Future] = []
 
-    translation_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="translator")
+    # Use a pool for post-processing (Notes + Translation)
+    # Increase workers slightly to allow simultaneous processing of multiple video's post-tasks
+    post_proc_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="post_proc")
     asr_pool = ThreadPoolExecutor(max_workers=ASR_MAX_CONCURRENT, thread_name_prefix="asr")
 
     lock = __import__("threading").Lock()
 
+    def post_processing_task(media_path: Path, srt_path: Path):
+        """Task that handles Notes generation and Translation sequentially for one video."""
+        out_dir = OUTPUT_DIR / media_path.stem
+        zh_srt_path = out_dir / f"{media_path.stem}.zh.srt"
+        notes_path = out_dir / f"{media_path.stem}_StudyNotes.md"
+
+        # 1. Study Notes
+        if notes_path.exists():
+            print(f"  [pipeline] [skip] Notes exist for '{media_path.name}'")
+        else:
+            frames = []
+            if not getattr(args, 'no_vision', False):
+                try:
+                    frames = extract_keyframes(media_path, out_dir)
+                except Exception as e:
+                    print(f"  [pipeline] Vision extraction failed for {media_path.name}: {e}")
+
+            txt_path = out_dir / f"{media_path.stem}.txt"
+            if txt_path.exists():
+                try:
+                    generate_study_notes(media_path, txt_path.read_text(encoding="utf-8"), frame_paths=frames)
+                except Exception as e:
+                    print(f"  [pipeline] Study notes failed for {media_path.name}: {e}")
+
+        # 2. Translation
+        if zh_srt_path.exists():
+            print(f"  [pipeline] [skip] Translation exists for '{media_path.name}'")
+        else:
+            try:
+                translate_srt_files({media_path: srt_path})
+            except Exception as e:
+                print(f"  [pipeline] Translation failed for {media_path.name}: {e}")
+
     def process_video_task(v_path: Path):
         nonlocal all_results_count
-        srt_mapping = transcribe_files([v_path], language=language)
+        srt_path = OUTPUT_DIR / v_path.stem / f"{v_path.stem}.srt"
+        
+        # ASR Checkpoint
+        if srt_path.exists():
+            print(f"  [pipeline] [skip] ASR already done: {v_path.name}")
+            srt_mapping = {v_path: srt_path}
+        else:
+            srt_mapping = transcribe_files([v_path], language=language)
 
         if srt_mapping:
             with lock:
                 all_results_count += len(srt_mapping)
 
-            for media_path in srt_mapping:
-                frames = []
-                if not getattr(args, 'no_vision', False):
-                    try:
-                        frames = extract_keyframes(media_path, OUTPUT_DIR / media_path.stem)
-                    except Exception as e:
-                        print(f"  [pipeline] Vision extraction failed for {media_path.name}: {e}")
-
-                txt_path = OUTPUT_DIR / media_path.stem / f"{media_path.stem}.txt"
-                if txt_path.exists():
-                    try:
-                        generate_study_notes(media_path, txt_path.read_text(encoding="utf-8"), frame_paths=frames)
-                    except Exception as e:
-                        print(f"  [pipeline] Study notes generation failed for {media_path.name}: {e}")
-
-            future = translation_pool.submit(translate_srt_files, dict(srt_mapping))
-            print(f"  [pipeline] ▶ ASR and Notes for '{v_path.name}' done. Translation queued.")
+            # ASR is DONE. Now offload Notes + Translation to the post_proc_pool
+            # This allows the ASR pool to start the next video's ASR immediately.
+            future = post_proc_pool.submit(post_processing_task, v_path, srt_path)
+            print(f"  [pipeline] ▶ ASR for '{v_path.name}' done. Notes & Translation offloaded.")
             return future
         else:
             print(f"  [pipeline] ✗ ASR failed for '{v_path.name}'.")
@@ -222,18 +294,25 @@ def run_pipeline(
         asr_futures = [asr_pool.submit(process_video_task, vp) for vp in media_files]
 
         for f in as_completed(asr_futures):
-            t_future = f.result()
-            if t_future:
-                translation_futures.append(t_future)
+            pp_future = f.result()
+            if pp_future:
+                post_proc_futures.append(pp_future)
 
-        if translation_futures:
-            print(f"\n[pipeline] All ASR tasks complete. Finishing remaining translations...")
-            for future in translation_futures:
+        if post_proc_futures:
+            print(f"\n[pipeline] All ASR tasks complete. Finishing remaining post-processing...")
+            for future in post_proc_futures:
                 future.result()
+
+        # Final pass cleanup for multi-video mode
+        print("\n[pipeline] Performing final resource cleanup...")
+        for vp in media_files:
+            zh_srt_path = OUTPUT_DIR / vp.stem / f"{vp.stem}.zh.srt"
+            if zh_srt_path.exists():
+                _cleanup_wav(vp)
 
     finally:
         asr_pool.shutdown(wait=False)
-        translation_pool.shutdown(wait=False)
+        post_proc_pool.shutdown(wait=False)
 
     _print_summary(start_time, all_results_count)
 
@@ -288,6 +367,10 @@ def main() -> None:
 
     INPUT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Pre-flight Check
+    from asr_engine import check_dependencies
+    check_dependencies()
 
     if args.update_glossary:
         from glossary_manager import update_glossary_auto

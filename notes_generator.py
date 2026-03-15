@@ -31,42 +31,72 @@ def generate_study_notes(media_path: Path, transcript_text: str, frame_paths: li
         truncated += "\n\n[transcript truncated for length]"
 
     prompt = f"""
-You are an expert CFA (Chartered Financial Analyst) tutor. Below is a transcript of a CFA Level 1 lecture.
+You are an expert CFA (Chartered Financial Analyst) tutor. Below is a transcript of a CFA Level 1 lecture, along with several keyframes from the video.
 Your task is to create comprehensive, well-structured study notes in Traditional Chinese (Taiwan).
 
-Please include the following sections:
+Please integrate information from the images (slides, charts) with the transcript text to provide a complete picture.
+
+Sections to include:
 1. **課程摘要 (Summary)**: A high-level overview of the video's content.
-2. **核心概念 (Key Concepts)**: Detailed explanations of professional terms and theories mentioned.
+2. **核心概念 (Key Concepts)**: Detailed explanations of professional terms and theories mentioned. Reference the slides if they contain definitions or charts.
 3. **重要公式 (Important Formulas)**: List any formulas mentioned with variable definitions.
 4. **考試重點 (Exam Focus)**: Specific tips or areas that are likely to appear on the CFA exam.
 5. **中英術語對照 (Terminology Table)**: A table of technical terms used in the video.
 
 ### Transcript:
 {truncated}
-
 """
 
+    contents = [prompt]
+    
     if frame_paths:
         frame_links = "\n\n### 課程投影片回顧\n"
         for i, fp in enumerate(frame_paths, 1):
-            # We use relative path for md compatibility
+            # 1. Add to prompt's bottom links (original behavior preserved)
             rel_path = f"frames/{fp.name}"
             frame_links += f"![投影片 {i}]({rel_path})\n"
+            
+            # 2. Add as Multimodal parts for AI to "see"
+            try:
+                contents.append(types.Part.from_bytes(
+                    data=fp.read_bytes(),
+                    mime_type="image/jpeg"
+                ))
+            except Exception as e:
+                print(f"  [Study Notes] Failed to attach image {fp.name}: {e}")
     else:
         frame_links = ""
 
     try:
         response = client.models.generate_content(
             model=model,
-            contents=prompt,
+            contents=contents,
             config=types.GenerateContentConfig(
                 temperature=0.2, # Slightly more creative/structured than 0.0
             )
         )
-        
+    except Exception as e:
+        print(f"  [Study Notes] Multimodal generation failed: {e}. Retrying with text-only mode...")
+        try:
+            # Fallback to text-only mode
+            response = client.models.generate_content(
+                model=model,
+                contents=[prompt],
+                config=types.GenerateContentConfig(
+                    temperature=0.0, # More deterministic for fallback
+                )
+            )
+        except Exception as e2:
+            print(f"  [Study Notes] Critical Failure: Text-only fallback also failed: {e2}")
+            return
+
+    try:
         notes_path.parent.mkdir(parents=True, exist_ok=True)
         
-        notes_content = f"# CFA Study Notes: {media_path.stem}\n\n" + response.text + frame_links
+        notes_content = f"# CFA Study Notes: {media_path.stem}\n\n" + response.text
+        if frame_paths and "Multimodal generation failed" not in str(locals().get('e', '')):
+             notes_content += frame_links
+             
         notes_path.write_text(notes_content, encoding="utf-8")
         print(f"  [Study Notes] Saved: {notes_path.name}")
         
@@ -81,4 +111,4 @@ Please include the following sections:
             print(f"  Token Usage (Notes): Input={response.usage_metadata.prompt_token_count}, Output={response.usage_metadata.candidates_token_count}, Total={response.usage_metadata.total_token_count}")
         
     except Exception as e:
-        print(f"  [Study Notes] Failed to generate: {e}")
+        print(f"  [Study Notes] Failed to write file: {e}")
