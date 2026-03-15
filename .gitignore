@@ -20,6 +20,9 @@ output/*
 # Local scripts and tests (avoid key exposure)
 test_gemini.py
 process_vids.sh
+process_fs_batch.sh
+usage_log.json
+pipeline_report.md
 tmp/
 *.log
 .env

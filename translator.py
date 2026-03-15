@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from glossary_manager import update_glossary_auto
+from usage_tracker import log_usage
 
-from tqdm import tqdm
 
 from config import (
+    DEFAULT_GEMINI_MODEL,
     load_glossary,
     TRANSLATION_BATCH_SIZE,
     TRANSLATION_MAX_CONCURRENT,
@@ -105,7 +106,7 @@ def translate_srt_files(
     Returns:
         {media_path: chinese_srt_path} for successfully translated files.
     """
-    gemini_model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    gemini_model = model or os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
 
     print(f"\n{'='*60}")
     print(f"Translation backend: Google Gemini API ({gemini_model})")
@@ -170,37 +171,36 @@ def translate_srt_files(
                     )
                     ordered_futures.append((bi, batch, future))
 
-                # Collect results with a progress bar
+                # Collect results
                 translated_entries: list[SrtEntry] = []
                 total_usage = {"input": 0, "output": 0, "total": 0}
                 
-                with tqdm(total=total, desc="  Translating", unit="batch", leave=False) as pbar:
-                    for bi, batch, future in ordered_futures:
-                        raw_result, usage = future.result()
-                        translations = parse_translation_response(raw_result, batch)
-                        
-                        if usage:
-                            total_usage["input"] += usage.prompt_token_count
-                            total_usage["output"] += usage.candidates_token_count
-                            total_usage["total"] += usage.total_token_count
+                for bi, batch, future in ordered_futures:
+                    raw_result, usage = future.result()
+                    translations = parse_translation_response(raw_result, batch)
+                    
+                    if usage:
+                        total_usage["input"] += usage.prompt_token_count
+                        total_usage["output"] += usage.candidates_token_count
+                        total_usage["total"] += usage.total_token_count
 
-                        for entry, translated_text in zip(batch, translations):
-                            translated_entries.append(SrtEntry(
-                                index=entry.index,
-                                start=entry.start,
-                                end=entry.end,
-                                text=translated_text,
-                            ))
-                        pbar.update(1)
+                    translated_entries.extend([
+                        SrtEntry(e.index, e.start, e.end, p_text)
+                        for e, p_text in zip(batch, translations)
+                    ])
 
             zh_srt_path = srt_path.parent / f"{media_path.stem}.zh.srt"
             write_srt(translated_entries, zh_srt_path)
-            total_elapsed = time.time() - t0
-            print(f"  Saved: {zh_srt_path.name} (total: {total_elapsed:.1f}s for {len(entries)} entries)")
-            print(f"  Token Usage (Translation): Input={total_usage['input']}, Output={total_usage['output']}, Total={total_usage['total']}")
             results[media_path] = zh_srt_path
+            
+            elapsed = time.time() - t0
+            print(f"  Saved: {zh_srt_path.name} (total: {elapsed:.1f}s for {len(entries)} entries)")
+            if total_usage["total"] > 0:
+                log_usage("Translation", media_path.name, total_usage["input"], total_usage["output"])
+                print(f"  Token Usage (Translation): Input={total_usage['input']}, Output={total_usage['output']}, Total={total_usage['total']}")
 
         except Exception as e:
-            print(f"  [ERROR] Translation failed: {e}")
+            print(f"  [ERROR] Translation failed for '{srt_path.name}': {e}")
+            continue
 
     return results

@@ -3,15 +3,16 @@ import os
 from pathlib import Path
 from google import genai
 from google.genai import types
+from config import DEFAULT_GEMINI_MODEL
 
 def extract_terms_with_ai(transcript_text: str, current_glossary: dict) -> dict:
     """Ask Gemini to identify key financial terms and suggest translations."""
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         return {}
-        
+
     client = genai.Client(api_key=api_key)
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash") # Use a fast model for scanning
+    model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
 
     # Prepare current terms to avoid duplicates or conflicts
     existing_keys = ", ".join(current_glossary.keys())
