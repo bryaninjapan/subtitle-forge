@@ -264,3 +264,22 @@ output/{影片名稱}/
 | **recover.py** | D_monolithic 偵測 | 自動發現並修補所有損毀的 ASR 檔案。 |
 | **translator.py** | Pre-flight 2k-char Guard | 翻譯前自動攔截並拆解超大條目。 |
 | **asr_engine.py** | Density Verification | 第一時間攔截 ASR 異常，確保資料品質。 |
+
+---
+
+### 🐛 已修復的引擎 Bug (Engine Bug Fixes)
+
+#### Bug 1：無限重試迴圈（最嚴重）
+- **位置**: `director.py:285`
+- **原因**: `ready_agents` 原本只排除 `completed_agents`，但 `FAILED` 的 agent 不在其中。這導致在同一次 session 內，失敗任務（如 ET-LM5）會被不斷重新派發，陷入「失敗 -> 立即重試 -> 再失敗」的無限迴圈，直到被手動 kill。
+- **修復**: 在 `ready_agents` 判斷中加入 `a.id not in failed_agents`。一旦某個 agent 在本次執行中失敗，同次 session 內將不再重試，確保流程能繼續向下走。
+
+#### Bug 2：永久失敗 vs 暫時失敗沒有區分
+- **位置**: `director.py:356 / director.py:33`
+- **修復**: 引入了 `FAILED_PERMANENT` 狀態與 `_is_permanent_error` 判斷：
+    - **400 / Context Length / Payload Too Large**: 標記為 `FAILED_PERMANENT`，系統偵測到這類「重試也沒用」的錯誤時會自動停止該任務，不再浪費 Token。
+    - **429 / 503 / 網路逾時**: 標記為 `FAILED`，下次運行時會自動重試。
+
+#### Bug 3：跨 session 的 FAILED_PERMANENT 自動解鎖
+- **位置**: `director.py:174`
+- **修復**: 在 `_bootstrap_from_disk` 階段新增邏輯。當 `recover.py` 修復了 SRT 並生成了 `.srt.bak` 時，引擎會自動將對應的 `FAILED_PERMANENT` 狀態重設為 `PENDING`。這使得修復後的影片在下次跑 `main.py` 時能自動獲得翻譯機會，無需手動修改 `state.json`。
