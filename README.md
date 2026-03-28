@@ -237,3 +237,30 @@ output/{影片名稱}/
 
 1. **ASR + Vision（音頻/圖片）** → 繼續使用 Gemini (多模態優勢)。
 2. **Translation + Chapters + QA + Study Notes fallback** → 全部走 OpenRouter 免費模型 (節省成本)。
+
+---
+
+### Phase 11: Pipeline Robustness & Monolithic Recovery (2026-03)
+- **單一巨大條目自動切割 (split_monolithic_entry)**：針對 ASR 偶發將整段影片誤存為單一 300KB 字幕的問題，實作了基於句子邊界的自動切割邏輯，並補充合成時間戳（估算率 ~2.2 字/秒）。
+- **翻譯器 Pre-flight 防護**：translator.py 現在會在呼叫 API 前檢查是否有超過 2000 字元的異常條目，若有則自動觸發切割，徹底杜絕 400 Context Length Error。
+- **後 ASR 密度驗證**：asr_engine.py 新增檢查點，若長影片產出的字幕密度過低（如每 2 分鐘少於 1 條），將自動發出警告並記錄 Fail，防止損毀資料進入管線。
+- **SRT 修復工具升級**：recover.py 現在具備 D_monolithic 類別偵測，可一鍵修復所有本地已損毀的「一條龍」字幕。
+
+---
+
+## 🛠️ 2026-03-28 異常修復摘要 (Monolithic SRT Fix)
+
+### 立即修復項目 (Hotfix)
+- **檔案**: output/2026-l1-et-lm5-video/2026-l1-et-lm5-video.srt
+- **狀況**: 原始 ASR 產出僅 1 條字幕 (310KB)，導致翻譯卡死。
+- **修復後**: 3406 條字幕，格式正確，句子邊界切割。
+- **備份**: 原始損毀檔已更名為 .srt.bak。
+- **後續**: 可直接重新執行 main.py 進行翻譯。
+
+### 三層防護機制策略 (Defense in Depth)
+| 位置 | 策略 | 效果 |
+| :--- | :--- | :--- |
+| **srt_utils.py** | split_monolithic_entry() | 拆解巨型條目並補強合成時間戳。 |
+| **recover.py** | D_monolithic 偵測 | 自動發現並修補所有損毀的 ASR 檔案。 |
+| **translator.py** | Pre-flight 2k-char Guard | 翻譯前自動攔截並拆解超大條目。 |
+| **asr_engine.py** | Density Verification | 第一時間攔截 ASR 異常，確保資料品質。 |
