@@ -283,3 +283,23 @@ output/{影片名稱}/
 #### Bug 3：跨 session 的 FAILED_PERMANENT 自動解鎖
 - **位置**: `director.py:174`
 - **修復**: 在 `_bootstrap_from_disk` 階段新增邏輯。當 `recover.py` 修復了 SRT 並生成了 `.srt.bak` 時，引擎會自動將對應的 `FAILED_PERMANENT` 狀態重設為 `PENDING`。這使得修復後的影片在下次跑 `main.py` 時能自動獲得翻譯機會，無需手動修改 `state.json`。
+
+---
+
+### 🛡️ 完善的跨 Session 重試與審核機制 (Retry Logic & Review Queue)
+
+系統具備精細的狀態管理，確保 API 資源不浪費，且異常狀況一目了然。
+
+| 狀態 | 觸發條件 | 下次運行策略 |
+| :--- | :--- | :--- |
+| **FAILED** | 暫時性失敗（如 429/503），`cross_session_attempts < 3` | **自動重試** ✓ |
+| **FAILED_MAX_RETRIES** | 累積失敗達 3 次（`cross_session_attempts = 3`） | **停止**，進入 Review Queue |
+| **FAILED_PERMANENT** | 永久性失敗（如 400 / Token Limit） | **永遠停止** |
+
+#### 📋 自動審核隊列 (Review Queue)
+為了讓您在大規模批次處理後能快速定位問題，每次 Pipeline 結束後，系統會自動印出一張 **Review Queue** 表。
+- **顯示內容**: 影片名稱、失敗的 Agent、總嘗試次數、最後一筆錯誤訊息。
+- **自癒提示**: 系統會提示您使用 `recover.py` 進行本地修復，或直接檢查 `state.json` 決定手動干預。
+
+> [!TIP]
+> **靈活配置**: 若需調整重試上限，只需修改 `director.py:37` 的 `MAX_CROSS_SESSION_RETRIES` 常數即可。
