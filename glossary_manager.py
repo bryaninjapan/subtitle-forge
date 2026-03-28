@@ -1,85 +1,87 @@
 import json
 import os
+import threading
 from pathlib import Path
 from google import genai
 from google.genai import types
-from config import DEFAULT_GEMINI_MODEL
-import threading
+from config import DEFAULT_GEMINI_MODEL, GLOSSARY_PATH, load_glossary
+from gemini_client import get_gemini_client
 
 _glossary_lock = threading.Lock()
 
+def _get_gemini_client():
+    return get_gemini_client()
+
+def load_glossary_raw() -> dict:
+    """Load the raw dictionary including metadata (hits)."""
+    if not GLOSSARY_PATH.exists(): return {}
+    try:
+        data = json.loads(GLOSSARY_PATH.read_text(encoding="utf-8"))
+        # Standardize format: {term: {"val": "trans", "hits": N}}
+        standardized = {}
+        for k, v in data.items():
+            if isinstance(v, dict): standardized[k] = v
+            else: standardized[k] = {"val": v, "hits": 0}
+        return standardized
+    except: return {}
+
+def save_glossary_raw(data: dict):
+    """Save sorted raw dictionary."""
+    sorted_data = dict(sorted(data.items()))
+    GLOSSARY_PATH.write_text(json.dumps(sorted_data, ensure_ascii=False, indent=4), encoding="utf-8")
+    load_glossary.cache_clear()
+
+def record_term_hits(terms_used: list[str]):
+    """Increment hit counters for terms used in a batch."""
+    with _glossary_lock:
+        raw = load_glossary_raw()
+        for t in terms_used:
+            if t in raw:
+                raw[t]["hits"] = raw[t].get("hits", 0) + 1
+        save_glossary_raw(raw)
+
+def prune_glossary(min_hits: int = 2):
+    """Remove terms with very low usage to keep prompt clean."""
+    with _glossary_lock:
+        raw = load_glossary_raw()
+        before = len(raw)
+        raw = {k: v for k, v in raw.items() if v.get("hits", 0) >= min_hits}
+        after = len(raw)
+        if before != after:
+            save_glossary_raw(raw)
+            print(f"  [Glossary] Pruned {before - after} low-usage terms.")
+
 def extract_terms_with_ai(transcript_text: str, current_glossary: dict) -> dict:
-    """Ask Gemini to identify key financial terms and suggest translations."""
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        return {}
-
-    client = genai.Client(api_key=api_key)
+    client = _get_gemini_client()
+    if not client: return {}
     model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
-
-    # Prepare current terms to avoid duplicates or conflicts
     existing_keys = ", ".join(current_glossary.keys())
     
-    prompt = f"""
-You are a financial terminology expert. Analyze the following transcript of a CFA Level 1 lecture.
-Identify the top 10 most important technical terms or abbreviations that are NOT in this list: [{existing_keys}].
-
-Provide professional Traditional Chinese (Taiwan) translations for these specific terms.
-Output ONLY a valid JSON object where keys are English terms and values are Chinese translations.
-
-Transcript:
-{transcript_text[:10000]} # Send a significant portion for context
-"""
+    prompt = f"Identify 5-10 technical CFA terms NOT in: [{existing_keys}]. Output JSON: {{'term': 'translation'}}.\nText:\n{transcript_text[:5000]}"
     try:
-        response = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.0,
-                response_mime_type="application/json"
-            )
+        res = client.models.generate_content(
+            model=model, contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
         )
-        new_terms = json.loads(response.text)
-        return new_terms
-    except Exception as e:
-        print(f"  [Glossary] AI scanning failed: {e}")
-        return {}
+        return json.loads(res.text)
+    except: return {}
 
 def update_glossary_auto(srt_path: Path):
-    """Scan the transcript and update glossary.json with new found terms."""
-    from config import GLOSSARY_PATH, load_glossary
-    
-    # 1. Read plain text version if available, else derive from srt
-    txt_path = srt_path.with_suffix(".txt")
-    if txt_path.exists():
-        text = txt_path.read_text(encoding="utf-8")
-    else:
-        # Fallback to simple SRT text extraction
-        import re
-        content = srt_path.read_text(encoding="utf-8")
-        text = " ".join(re.findall(r"\n([^\d\n].*)\n", content))
-
-    if not text:
-        return
-
-    # 2. Load current
     with _glossary_lock:
-        current = load_glossary()
+        raw = load_glossary_raw()
+        current = {k: v["val"] for k, v in raw.items()}
         
-        # 3. Get new terms from AI
-        print(f"  [Glossary] Scanning '{srt_path.name}' for new financial terms...")
+        txt_p = srt_path.with_suffix(".txt")
+        text = txt_p.read_text(encoding="utf-8") if txt_p.exists() else ""
+        if not text: return
+
         new_terms = extract_terms_with_ai(text, current)
-        
         if new_terms:
-            # 4. Merge
-            added_count = 0
+            added = 0
             for k, v in new_terms.items():
-                if k not in current:
-                    current[k] = v
-                    added_count += 1
-                    print(f"    + New term: {k} -> {v}")
-            
-            if added_count > 0:
-                # 5. Save back to file
-                GLOSSARY_PATH.write_text(json.dumps(current, ensure_ascii=False, indent=4), encoding="utf-8")
-                print(f"  [Glossary] Automatically added {added_count} new terms to glossary.json")
+                if k not in raw:
+                    raw[k] = {"val": v, "hits": 1} # Start with 1 hit as it was found in transcript
+                    added += 1
+            if added > 0:
+                save_glossary_raw(raw)
+                print(f"  [Glossary] Added {added} new terms.")

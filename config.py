@@ -1,71 +1,101 @@
-from pathlib import Path
+"""Global configuration for Subtitle Forge."""
 
-BASE_DIR = Path(__file__).parent
+import os
+import yaml  # type: ignore
+from pathlib import Path
+from functools import lru_cache
+from typing import Any
+
+# --- Project Paths ---
+BASE_DIR = Path(__file__).parent.absolute()
 INPUT_DIR = BASE_DIR / "input"
 OUTPUT_DIR = BASE_DIR / "output"
-
-VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".m4v", ".ts"}
-AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".aac"}
-
-FFMPEG_BIN = "ffmpeg"
-AUDIO_SAMPLE_RATE = 16000
-
-# Gemini API Settings
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
-TRANSLATION_BATCH_SIZE = 50  # Gemini API handles larger batches efficiently
-# Concurrency Settings
-ASR_MAX_CONCURRENT = 2          # Number of videos to run ASR on simultaneously
-POST_PROC_MAX_CONCURRENT = 2    # Number of videos to run Notes/Translation on simultaneously
-TRANSLATION_MAX_CONCURRENT = 5  # Max concurrent API calls for translation batches inside one video
-TRANSLATION_MAX_TOKENS = 4096
-TRANSLATION_USE_CACHING = False  # Set to True for very large glossaries (>100 terms)
-DEFAULT_TRANSLATION_STYLE = "academic"  # academic, casual, exam-focused
-SILENCE_THRESHOLD = -40  # Threshold in dB for skip-silence detection
-
-# Vision / Multimodal Settings
-MAX_FRAMES_PER_VIDEO = 50  # Limit number of keyframes sent to Gemini to avoid 400 errors/token limits
-
-# 金融/技術術語對照表 (由 glossary.json 讀取)
 GLOSSARY_PATH = BASE_DIR / "glossary.json"
 
-def load_glossary() -> dict:
-    import json
-    if GLOSSARY_PATH.exists():
-        try:
-            return json.loads(GLOSSARY_PATH.read_text(encoding="utf-8"))
-        except Exception as e:
-            print(f"Warning: Failed to load glossary.json: {e}")
-    return {}
+# --- Load YAML Settings ---
+SETTINGS_PATH = BASE_DIR / "settings.yaml"
 
+def load_settings():
+    if not SETTINGS_PATH.exists(): return {}
+    with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+_cfg: dict[str, Any] = load_settings()
+
+# Default values if not in YAML
+api_c: dict[str, Any] = _cfg.get("api", {})
+DEFAULT_GEMINI_MODEL = api_c.get("model", "gemini-2.5-flash")
+LITE_MODEL = api_c.get("lite_model", "gemini-2.5-flash")
+PRO_MODEL = api_c.get("pro_model", "gemini-2.5-flash")
+
+or_c: dict[str, Any] = _cfg.get("openrouter", {})
+OPENROUTER_TEXT_MODEL = or_c.get("text_model", "qwen/qwen-2.5-72b-instruct:free")
+
+pipe_c: dict[str, Any] = _cfg.get("pipeline", {})
+ASR_MAX_CONCURRENT = pipe_c.get("asr_concurrent", 2)
+POST_PROC_MAX_CONCURRENT = pipe_c.get("post_proc_concurrent", 4)
+TRANSLATION_MAX_CONCURRENT = POST_PROC_MAX_CONCURRENT # Aliasing for compatibility
+TRANSLATION_BATCH_SIZE = pipe_c.get("translation_batch_size", 50)
+ENABLE_QA_LOOP = pipe_c.get("use_qa_loop", False)
+ENABLE_QA_SCORING = pipe_c.get("use_qa_scoring", False)
+TRANSLATION_USE_CACHING = pipe_c.get("use_context_caching", False)
+MAX_COST_USD = pipe_c.get("max_cost_usd", 5.0)
+
+costs_c: dict[str, Any] = _cfg.get("costs", {})
+COST_INPUT_FLASH, COST_OUTPUT_FLASH = costs_c.get("flash", [0.10, 0.40])
+COST_INPUT_LITE, COST_OUTPUT_LITE = costs_c.get("lite", [0.04, 0.16])
+
+# --- Media Settings ---
+AUDIO_SAMPLE_RATE = 16000
+SILENCE_THRESHOLD = -50
+MAX_FRAMES_PER_VIDEO = 20  # Limit to 20 frames per video to keep Gemini costs low
+FFMPEG_BIN = "ffmpeg"
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm"}
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac"}
+
+# --- Subtitle Prompting ---
 TRANSLATION_SYSTEM_PROMPT = """\
-你是專業的教學影片字幕翻譯員與語義優化師。請將以下字幕翻譯為繁體中文。
+You are a professional CFA subtitle translator. Translate the given subtitle lines from English to Simplified Chinese.
 
-規則：
-- 逐條翻譯，保持序號（Index）與原文一一對應（不可合併或刪除序號）
-- **語義優化 (Natural Phrasing)**：確保每一行翻譯都是一個完整的語義單位。如果原文在句中斷開，你可以適度調整譯文在相鄰序號間的分配，讓中文字幕讀起來自然流暢，符合人類閱讀習慣。
-- 每條翻譯格式為：序號|翻譯內容
-- 保持專業術語準確，遵守提供的術語表
-- 不要添加任何解釋、註釋或額外文字
+Glossary (you MUST use these translations for these terms):
+{glossary_text}
 
-請嚴格遵守以下術語對接（原文 -> 繁體中文）：
-{glossary_text}\
+Strict output rules:
+- Output ONLY a valid JSON array. Nothing else.
+- Format: [{{"index": <original_index>, "text": "<chinese_translation>"}}, ...]
+- Every input line MUST have a corresponding output entry with the same index.
+- Translate ALL text to Chinese. Do NOT output English.
+- Preserve technical acronyms like NPV, IRR, LOS, CFA as-is within the Chinese text.
+- Do NOT add explanations or preambles.
 """
-# MIME Types mapping
+
+STYLE_TEMPLATES = {
+    "academic": "Tone: Academic and formal. Use precise financial terminology.",
+    "casual": "Tone: Natural and conversational. Smooth phrasing for general learners.",
+    "exam-focused": "Tone: Exam-oriented. Highlight key LOS terms using 【重點】 markers where appropriate."
+}
+
+# --- Glossary Logic ---
+@lru_cache(maxsize=1)
+def load_glossary() -> dict:
+    if not GLOSSARY_PATH.exists(): return {}
+    try:
+        data: dict[str, Any] = yaml.safe_load(GLOSSARY_PATH.read_text(encoding="utf-8")) or {}  # type: ignore
+        # Support both old string values and new dict values with hit count
+        # data format: {"term": "translation"} or {"term": {"val": "trans", "hits": 10}}
+        result = {}
+        for k, v in data.items():  # type: ignore
+            if isinstance(v, dict): result[k] = v.get("val", "")
+            else: result[k] = v
+        return result
+    except: return {}
+
+def get_truncated_glossary(max_terms: int = 50) -> dict:
+    full = load_glossary()
+    from itertools import islice
+    return dict(islice(full.items(), max_terms))
+
 MIME_TYPES = {
-    # Video
-    ".mp4": "video/mp4",
-    ".mkv": "video/x-matroska",
-    ".avi": "video/x-msvideo",
-    ".mov": "video/quicktime",
-    ".webm": "video/webm",
-    ".flv": "video/flv",
-    ".m4v": "video/mp4",
-    ".ts": "video/mp2t",
-    # Audio
-    ".wav": "audio/wav",
-    ".mp3": "audio/mpeg",
-    ".flac": "audio/flac",
-    ".m4a": "audio/mp4",
-    ".ogg": "audio/ogg",
-    ".aac": "audio/aac",
+    ".mp4": "video/mp4", ".mov": "video/quicktime", ".mkv": "video/x-matroska",
+    ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4"
 }

@@ -1,572 +1,2402 @@
 {
-    "CFA": "特許金融分析師",
-    "Level 1": "第一級",
-    "Equity": "權益/股權",
-    "Fixed Income": "固定收益",
-    "Derivatives": "衍生性商品",
-    "Alternative Investments": "另類投資",
-    "Portfolio Management": "投資組合管理",
-    "Wealth Management": "財富管理",
-    "Ethics": "倫理道德",
-    "Economics": "經濟學",
-    "Quantitative Methods": "計量方法",
-    "Corporate Issuers": "企業發行商",
-    "Financial Statement Analysis": "財務報表分析",
-    "Asset Allocation": "資產配置",
-    "Cash Flow": "現金流",
-    "Dividend": "股利",
-    "Balance Sheet": "資產負債表",
-    "Income Statement": "損益表",
-    "Standard Deviation": "標準差",
-    "Risk Premium": "風險溢價",
-    "Fiduciary duty": "信託義務",
-    "Material, non-public information": "重大非公開資訊",
-    "Code of ethics": "道德準則",
-    "Standards of conduct": "行為準則",
-    "Profession": "專業",
-    "Compliance programs": "合規計畫",
-    "Regulators": "監管機構",
-    "Capital markets": "資本市場",
-    "Standard of care": "注意義務標準",
-    "Professional bodies": "專業團體",
-    "LOS (Learning Outcome Statement)": "學習成果說明",
-    "Study session": "學習單元",
-    "Moral principles": "道德原則",
-    "Ethical conduct": "倫理行為",
-    "Self-interest": "自身利益",
-    "Consequences": "後果",
-    "Reputation": "聲譽",
-    "Trustworthiness": "可信度",
-    "Integrity": "誠信",
-    "Client": "客戶",
-    "Professional conduct program (PCP)": "專業行為計畫 (PCP)",
-    "Member or candidate": "會員或考生",
-    "Suitability": "適當性",
-    "Client confidentiality": "客戶機密性",
-    "Market manipulation": "市場操縱",
-    "Loyalty": "忠誠",
-    "Misrepresentations": "虛假陳述",
-    "Independence and objectivity": "獨立性與客觀性",
-    "Performance presentation": "績效表達",
-    "Written consent": "書面同意",
-    "Disciplinary Review Committee": "紀律審查委員會",
-    "CFA charter holders": "CFA特許資格持有人",
-    "Self-disclosure": "自我揭露",
-    "Annual professional conduct statement": "年度專業行為聲明",
-    "Disciplinary action": "紀律處分",
-    "Public censure": "公開譴責",
-    "Suspension of membership": "會籍暫停",
-    "Revocation of the CFA charter": "撤銷CFA特許資格",
-    "Prohibition from further participation": "禁止進一步參與",
-    "Asset Manager Code of Professional Conduct": "資產管理業者專業行為準則",
-    "Research Analyst": "研究分析師",
-    "Brokerage Firm": "證券經紀商",
-    "Common Stock": "普通股",
-    "Brokerage Commissions": "經紀佣金",
-    "Investment Manager": "投資經理人",
-    "M&A (Mergers & Acquisitions)": "併購",
-    "Disclosure": "揭露",
-    "Regulatory Organizations": "監管機構",
-    "Endowment Fund": "捐贈基金",
-    "Board of Trustees": "董事會",
-    "Competence": "勝任能力",
-    "Conflicts of Interest": "利益衝突",
-    "Continuing Professional Education (CPE)": "持續專業教育",
-    "Knowledge": "知識",
-    "Skills": "技能",
-    "Diligence": "勤勉",
-    "Environmental, Social, and Governance (ESG) ratings": "環境、社會與治理 (ESG) 評級",
-    "Sell-side firm": "賣方機構",
-    "Buy-side firms": "買方機構",
-    "Supervisory responsibility": "監督職責",
-    "Jurisdiction": "管轄權",
-    "Dissociate": "脫離關係",
-    "Vicarious liability": "轉承責任",
-    "Whistle blow": "吹哨",
-    "Statutes": "法規",
-    "Licensing agency": "許可機構",
-    "Professional association": "專業協會",
-    "Firm's policies and procedures": "公司政策與程序",
-    "Civil regulator": "民事監管機構",
-    "Professional regulator": "專業監管機構",
-    "Mosaic Theory": "馬賽克理論",
-    "Selectively Disclosed": "選擇性揭露",
-    "Price Effect": "價格影響",
-    "Non-material": "非重大",
-    "Company Insider": "公司內部人",
-    "Proprietary Trading": "自營交易",
-    "Firewall": "防火牆",
-    "Public Dissemination": "公開傳播",
-    "Issuer": "發行人",
-    "Analyst Effect": "分析師效應",
-    "Investment Policy Statement (IPS)": "投資政策聲明 (IPS)",
-    "Regulatory Compliance": "法規遵循",
-    "Reasonable Efforts": "合理努力",
-    "Non-compete agreement": "競業禁止協議",
-    "Non-disclosure": "保密協議",
-    "Independent Contractor": "獨立承包商",
-    "Target Return": "目標報酬",
-    "Written Compliance Procedures": "書面遵循程序",
-    "Periodic Reviews": "定期審查",
-    "Additional Compensation Arrangements": "額外報酬安排",
-    "GIPS standards": "GIPS準則",
-    "Composite": "綜合績效",
-    "Verification": "驗證",
-    "Investment mandate": "投資指令",
-    "Asset owners": "資產所有者",
-    "Firm-wide process": "全公司流程",
-    "Ex post basis": "事後基礎",
-    "Ex ante basis": "事前基礎",
-    "Independent third party": "獨立第三方",
-    "Terminated portfolios": "已終止投資組合",
-    "GIPS": "GIPS",
-    "Global Investment Performance Standards": "全球投資績效標準",
-    "Representative accounts": "代表性帳戶",
-    "Survivorship bias": "存活者偏差",
-    "Varying time periods": "期間不一",
-    "Fair presentation": "公允表達",
-    "Full disclosure": "充分揭露",
-    "Firm-wide compliance": "全公司範圍遵循",
-    "Definition of the firm": "公司定義",
-    "Definition of discretion": "裁量權定義",
-    "Society for Worldwide Interbank Financial Telecommunication (SWIFT)": "環球銀行金融電信協會 (SWIFT)",
-    "SWIFT rate": "SWIFT費率",
-    "Custody": "託管",
-    "Custodian": "託管機構",
-    "Clearing": "清算",
-    "Settlement": "交割",
-    "Asset-based fee": "按資產計費",
-    "Financial institutions": "金融機構",
-    "Standard 1A": "準則1A",
-    "Out-of-pocket expenses": "實報實銷費用",
-    "Speculative": "投機性",
-    "Press releases": "新聞稿",
-    "Sovereign wealth fund (SWF)": "主權財富基金 (SWF)",
-    "Investment banks": "投資銀行",
-    "Stock price": "股價",
-    "Volume": "成交量",
-    "Standard I(C)": "準則 I(C)",
-    "Market participants": "市場參與者",
-    "Transaction structure": "交易結構",
-    "CEO": "執行長",
-    "prospectus": "公開說明書",
-    "liquidity": "流動性",
-    "margin requirements": "保證金要求",
-    "liquidation": "強制平倉",
-    "foreign exchange": "外匯",
-    "selective disclosure": "選擇性揭露",
-    "reasonable investor": "理性投資人",
-    "CFA Institute Code and Standards": "CFA協會職業道德準則與專業行為標準",
-    "Security Exchange": "證券交易所",
-    "prudence": "審慎",
-    "closed-end investment fund": "封閉型基金",
-    "leverage": "槓桿",
-    "diversification": "分散投資",
-    "high concentration": "高度集中",
-    "investment vehicle": "投資工具",
-    "risk tolerance": "風險承受度",
-    "registered account representative": "註冊客戶代表",
-    "retail clients": "零售客戶",
-    "superannuation pension accounts": "退休金帳戶",
-    "self-managed superannuation funds (SMSFs)": "自營退休金基金",
-    "Financial planning": "財務規劃",
-    "Assets under management": "管理資產規模",
-    "Proprietary information": "專有資訊",
-    "Duty of loyalty": "忠誠義務",
-    "Micro-cap companies": "微型市值公司",
-    "Small-cap companies": "小型市值公司",
-    "Research coverage": "研究涵蓋",
-    "Issuer-paid research": "發行人付費研究",
-    "Research universe": "研究標的範圍",
-    "Account manager": "客戶經理",
-    "Record retention": "紀錄保存",
-    "Know-your-client information (KYC)": "了解客戶資訊",
-    "Front running": "搶先交易",
-    "Broker/dealer": "證券經紀商/自營商",
-    "Investment adviser": "投資顧問",
-    "Asset class": "資產類別",
-    "Third-party subadvisers": "第三方次級顧問",
-    "Referral fee": "介紹費",
-    "High-net-worth individuals (HNWI)": "高淨值個人",
-    "Priority of Transactions": "交易優先順序",
-    "Creditworthiness": "信用評等",
-    "Profitability measures": "獲利能力衡量指標",
-    "Ratios": "比率",
-    "Common size statements": "共同比報表",
-    "Regression analysis": "迴歸分析",
-    "GAAP": "一般公認會計原則",
-    "Adjusted EBITDA": "調整後EBITDA",
-    "Gross margin": "毛利率",
-    "Regulatory filings": "監管申報文件",
-    "Audit reports": "查核報告",
-    "Financial Reporting Standards": "財務報導準則",
-    "Accounting Standards": "會計準則",
-    "IASB (International Accounting Standards Board)": "國際會計準則理事會",
-    "IFRS (International Financial Reporting Standards)": "國際財務報導準則",
-    "FASB (Financial Accounting Standards Board)": "財務會計準則委員會",
-    "US GAAP (United States Generally Accepted Accounting Principles)": "美國一般公認會計原則",
-    "SEC (Securities and Exchange Commission)": "證券交易委員會",
-    "Conceptual Framework": "觀念架構",
-    "Qualitative Characteristics": "質性特性",
-    "Relevance": "攸關性",
-    "accounting equation": "會計恆等式",
-    "future economic benefits": "未來經濟效益",
-    "book value": "帳面價值",
-    "intrinsic value": "內在價值",
-    "current assets": "流動資產",
-    "non-current assets": "非流動資產",
-    "current liabilities": "流動負債",
-    "non-current liabilities": "非流動負債",
-    "solvency": "償債能力",
-    "working capital": "營運資金",
-    "Tax base": "稅基",
-    "Carrying amount": "帳面金額",
-    "Temporary difference": "暫時性差異",
-    "Deferred tax asset (DTA)": "遞延所得稅資產",
-    "Deferred tax liability (DTL)": "遞延所得稅負債",
-    "Unearned revenue": "預收收入",
-    "Amortization": "攤銷",
-    "Capitalized": "資本化",
-    "Expensed": "費用化",
-    "Permanent difference": "永久性差異",
-    "effective interest rate": "有效利率",
-    "yield to maturity": "到期殖利率",
-    "issued at par": "平價發行",
-    "at a premium": "溢價",
-    "at a discount": "折價",
-    "face value": "面值",
-    "amortization of the discount": "折價攤銷",
-    "amortization of the premium": "溢價攤銷",
-    "bonds payable": "應付公司債",
-    "fair value": "公允價值",
-    "Performance measures": "績效衡量指標",
-    "Critical success factors": "關鍵成功因素",
-    "Alignment of strategy and results": "策略與成果一致性",
-    "Low-cost provider": "低成本供應商",
-    "Niche market": "利基市場",
-    "Time series": "時間序列",
-    "Cross-sectional": "橫斷面",
-    "Operating cash flows": "營運現金流量",
-    "Free cash flows": "自由現金流量",
-    "Top-down approach": "由上而下法",
-    "Time Value of Money": "貨幣時間價值",
-    "Net Present Value (NPV)": "淨現值",
-    "Internal Rate of Return (IRR)": "內部報酬率",
-    "Capital Asset Pricing Model (CAPM)": "資本資產定價模型",
-    "Efficient Market Hypothesis (EMH)": "效率市場假說",
-    "Duration": "存續期間",
-    "Convexity": "凸性",
-    "Weighted Average Cost of Capital (WACC)": "加權平均資金成本",
-    "Dividend Discount Model (DDM)": "股利折現模型",
-    "Arbitrage": "套利",
-    "Board of Governors": "董事會",
-    "Conduct inquiries": "進行調查",
-    "Civil litigation": "民事訴訟",
-    "Criminal investigations": "刑事調查",
-    "Written complaint": "書面投訴",
-    "Professional conduct staff": "專業行為人員",
-    "Exam proctors": "考試監考人員",
-    "Confidential exam material": "機密考試材料",
-    "Request for a written explanation": "要求書面解釋",
-    "Complaining party": "投訴方",
-    "Operating expenses": "營運費用",
-    "Subsidiaries": "子公司",
-    "Personal investing": "個人投資",
-    "Prior approval": "事前核准",
-    "Holdings": "持有部位",
-    "Planned expenditures": "計畫支出",
-    "Buy order": "買單",
-    "Standard 3B": "準則3B",
-    "Client benefit": "客戶利益",
-    "Recommendation": "投資建議",
-    "Professionalism": "專業精神",
-    "Guidance": "指引",
-    "Law": "法律",
-    "Gift": "贈禮",
-    "Benefit": "利益",
-    "Compensation": "報酬",
-    "Solicit": "索取",
-    "Accept": "接受",
-    "Compromise": "損害",
-    "Strict": "嚴格",
-    "Investment analysis": "投資分析",
-    "Prospective clients": "潛在客戶",
-    "Abilities": "能力",
-    "Research reports": "研究報告",
-    "Quant metrics": "量化指標",
-    "ESG analyst": "ESG分析師",
-    "ESG investment specialist certificate": "ESG投資專家證書",
-    "Regulatory attorney": "法規律師",
-    "Hedge fund": "對沖基金",
-    "Licensing requirement": "執照要求",
-    "Independent practice": "獨立執業",
-    "Purchase recommendation": "買入建議",
-    "Long-term track record": "長期績效紀錄",
-    "Total return": "總報酬",
-    "Penny stock": "低價股",
-    "Guarantying future results": "保證未來績效",
-    "Investment banking department": "投資銀行部門",
-    "Physical and informational barriers": "實體與資訊隔離牆",
-    "Pension fund": "退休基金",
-    "Participants and beneficiaries": "參與者與受益人",
-    "Employee trading": "員工交易",
-    "Disseminated equitably": "公平傳播",
-    "Information barrier": "資訊屏障",
-    "Physical barriers": "實體屏障",
-    "Interaction effect": "交互作用效應",
-    "Analyst meeting": "分析師會議",
-    "Regulatory hurdle": "監管障礙",
-    "Analyst's rating": "分析師評級",
-    "Public information": "公開資訊",
-    "Unreliable source": "不可靠來源",
-    "Strict law or regulation": "嚴格的法律或法規",
-    "Knowingly participate or assist": "知情參與或協助",
-    "Separate from the activity": "脫離該活動",
-    "Resignation": "辭職",
-    "Endemic": "普遍存在的",
-    "Tainted": "蒙受污點的",
-    "Investment products": "投資產品",
-    "Country of origination": "原產國",
-    "Country of expected sale": "預期銷售國",
-    "Distributors": "經銷商",
-    "Discount Rate": "折現率",
-    "Cost of Equity": "股權成本",
-    "Beta": "貝他係數",
-    "Systematic Risk": "系統性風險",
-    "Unsystematic Risk": "非系統性風險",
-    "Working Capital Management": "營運資金管理",
-    "Capital Budgeting": "資本預算",
-    "Free Cash Flow to Firm (FCFF)": "公司自由現金流量",
-    "Enterprise Value (EV)": "企業價值",
-    "Operating Leverage": "營運槓桿",
-    "Accrual Accounting": "應計會計",
-    "Depreciation": "折舊",
-    "Statement of Cash Flows": "現金流量表",
-    "Earnings Per Share (EPS)": "每股盈餘",
-    "Coupon Rate": "票面利率",
-    "Maturity Date": "到期日",
-    "Option": "選擇權",
-    "Futures Contract": "期貨合約",
-    "Inflation": "通貨膨脹",
-    "Fiscal Policy": "財政政策",
-    "Secondary research": "次級研究",
-    "Third party research": "第三方研究",
-    "Assumptions": "假設",
-    "Rigor of the analysis": "分析嚴謹度",
-    "Methodology": "研究方法",
-    "Replication": "重現性",
-    "Quantitatively oriented research": "量化導向研究",
-    "Investment models": "投資模型",
-    "Algorithms": "演算法",
-    "External advisors": "外部經理人",
-    "Present Value (PV)": "現值",
-    "Annuity": "年金",
-    "Required Rate of Return": "要求報酬率",
-    "Efficient Frontier": "有效率前緣",
-    "Sharpe Ratio": "夏普比率",
-    "Credit Risk": "信用風險",
-    "Preferred Stock": "特別股",
-    "Price-to-Earnings (P/E) Ratio": "本益比",
-    "Monetary Policy": "貨幣政策",
-    "Normal Distribution": "常態分佈",
-    "Discounted Cash Flow (DCF)": "折現現金流量",
-    "Return on Equity (ROE)": "股東權益報酬率",
-    "Goodwill": "商譽",
-    "Yield Curve": "殖利率曲線",
-    "Swap": "掉期",
-    "Gross Domestic Product (GDP)": "國內生產毛額",
-    "Correlation": "相關性",
-    "Terminal Value": "終端價值",
-    "Book Value Per Share (BVPS)": "每股淨值",
-    "EBIT (Earnings Before Interest and Taxes)": "息前稅前盈餘",
-    "Agency Problem": "代理問題",
-    "Capital Structure": "資本結構",
-    "Cost of Debt": "債務成本",
-    "Limit Order": "限價單",
-    "Business Cycle": "景氣循環",
-    "Free Cash Flow to Equity (FCFE)": "股東自由現金流量",
-    "Enterprise Value to EBITDA (EV/EBITDA)": "企業價值/EBITDA比率",
-    "Statement of Comprehensive Income": "綜合損益表",
-    "Hypothesis Testing": "假設檢定",
-    "Value at Risk (VaR)": "風險值",
-    "Revenue Recognition": "收入認列",
-    "Inventory Valuation": "存貨評價",
-    "Depreciation Methods": "折舊方法",
-    "Operating Lease": "營業租賃",
-    "Finance Lease": "融資租賃",
-    "Goodwill Impairment": "商譽減損",
-    "Market Capitalization": "市值",
-    "Interest Rate Risk": "利率風險",
-    "Reinvestment Risk": "再投資風險",
-    "Forward Contract": "遠期契約",
-    "EOCQs": "章末習題",
-    "Financial Statement Analysis Framework": "財務報表分析框架",
-    "Process data": "處理數據",
-    "Collect data": "收集數據",
-    "Analyze and interpret data": "分析與解釋數據",
-    "Updated reports recommendations": "更新報告建議",
-    "Learning Module": "學習模組",
-    "Manageable set of data": "可管理數據集",
-    "Phase": "階段",
-    "Input": "輸入",
-    "Cost of goods sold": "銷貨成本",
-    "Gross profit": "銷貨毛利",
-    "Other comprehensive income (OCI)": "其他綜合損益",
-    "Basic EPS": "基本每股盈餘",
-    "Diluted EPS": "稀釋每股盈餘",
-    "Weighted average number of shares outstanding": "加權平均流通在外股數",
-    "Convertible securities": "可轉換證券",
-    "Accounting policy": "會計政策",
-    "Discontinued operations": "停業單位",
-    "Retrospective adjustment": "追溯調整",
-    "Initial measurement": "初始衡量",
-    "Purchase price": "購買價格",
-    "Target": "標的",
-    "Company": "公司",
-    "Entity": "實體",
-    "Long-term": "長期",
-    "Liabilities": "負債",
-    "Assets": "資產",
-    "Acquisition": "收購",
-    "Measurement": "衡量",
-    "Intangible assets": "無形資產",
-    "Tangible assets": "有形資產",
-    "Useful life": "耐用年限",
-    "Finite life": "有限耐用年限",
-    "Indefinite life": "無限耐用年限",
-    "Revaluation model": "重估價模型",
-    "Patents": "專利",
-    "Trademark": "商標",
-    "Development costs": "開發成本",
-    "Business combination": "企業合併",
-    "Accounting standard": "會計準則",
-    "Risks and rewards": "風險與報酬",
-    "Secured loan": "擔保貸款",
-    "Converged standard": "趨同準則",
-    "Contract with a customer": "客戶合約",
-    "Collectibility": "可收回性",
-    "Standard setters": "準則制定者",
-    "Performance obligations": "履約義務",
-    "Transaction price": "交易價格",
-    "Transfer of control": "控制權移轉",
-    "Benchmarks": "基準",
-    "Minimally acceptable behaviors": "最低可接受行為",
-    "Obligatory and forbidden conduct": "應為與禁止行為",
-    "Abstract": "抽象的",
-    "Concrete": "具體的",
-    "Issues of interpretation": "解釋問題",
-    "Commitment to serve others": "服務他人的承諾",
-    "Vocation": "天職",
-    "Occupation": "職業",
-    "Framework of practice and behavior": "實踐與行為框架",
-    "Future Value (FV)": "未來價值",
-    "Net Income": "淨利",
-    "Retained Earnings": "保留盈餘",
-    "Mean": "平均數",
-    "Variance": "變異數",
-    "Bond": "債券",
-    "Underlying Asset": "標的資產",
-    "Supply and Demand": "供給與需求",
-    "Interest Rate": "利率",
-    "Modern Portfolio Theory (MPT)": "現代投資組合理論",
-    "Real Estate": "不動產",
-    "Private Equity": "私募股權",
-    "Venture Capital": "創業投資",
-    "Commodities": "大宗商品",
-    "Technical Analysis": "技術分析",
-    "Fundamental Analysis": "基本分析",
-    "Behavioral Finance": "行為財務學",
-    "DuPont Analysis": "杜邦分析",
-    "Valuation Multiples": "估值倍數",
-    "Return on Assets (ROA)": "資產報酬率",
-    "Probability Distribution": "機率分佈",
-    "Significance Level": "顯著水準",
-    "Opportunity Cost": "機會成本",
-    "Elasticity": "彈性",
-    "Contingent Liabilities": "或有負債",
-    "Corporate Governance": "公司治理",
-    "Price-to-Book (P/B) Ratio": "股價淨值比",
-    "Default Risk": "違約風險",
-    "Hedging": "避險",
-    "Risk-Free Rate": "無風險利率",
-    "Misconduct": "不當行為",
-    "At the market order": "市價單",
-    "Beneficiary": "受益人",
-    "Index fund": "指數型基金",
-    "Fair Dealing": "公平交易",
-    "KYM (Know Your Mandate)": "了解您的任務",
-    "Trade secrets": "商業機密",
-    "Solicit clients": "招攬客戶",
-    "Customer lists": "客戶名單",
-    "Delegation": "職務委派",
-    "Shareholders": "股東",
-    "Participants and Beneficiaries": "參與者與受益人",
-    "Private Wealth Management Firm": "私人財富管理公司",
-    "Formal Client Relationship": "正式客戶關係",
-    "Committed Investments": "承諾投資",
-    "Competitive Business": "競爭性業務",
-    "Service Fees": "服務費",
-    "Equity-Oriented Clients": "股票導向客戶",
-    "Inflated Recommendation": "誇大推薦",
-    "Pension Plan": "退休金計畫",
-    "Disclosures of cost": "成本揭露",
-    "Nature of services": "服務性質",
-    "Avoid or disclose": "避免或揭露",
-    "Investment professionals": "投資專業人士",
-    "Performance of function": "職務執行",
-    "Violation": "違規",
-    "Business acumen": "商業敏銳度",
-    "Geopolitical consulting firm": "地緣政治諮詢公司",
-    "Multinational trade deal": "跨國貿易協議",
-    "Boutique research firm": "精品研究公司",
-    "Software vendor": "軟體供應商",
-    "Private pension fund": "私人退休基金",
-    "Misleading practices": "誤導性行為",
-    "Claims compliance": "聲稱符合規範",
-    "Independent verification firm": "獨立驗證公司",
-    "Comparability of results": "結果可比性",
-    "Fee-paying discretionary portfolios": "支付費用之全權委託投資組合",
-    "Non-discretionary portfolios": "非全權委託投資組合",
-    "Excludes portfolios": "排除投資組合",
-    "Oversight body": "監督機構",
-    "Verifier": "驗證者",
-    "Portfolio assignment": "投資組合歸屬",
-    "Client restrictions": "客戶限制",
-    "Investment strategies implementation": "投資策略執行",
-    "Geographical offices": "地理辦事處",
-    "Brand name": "品牌名稱",
-    "Poor performing portfolio": "績效不佳投資組合",
-    "Verification process": "驗證流程",
-    "Accuracy of returns": "報酬準確性",
-    "Calculation of returns": "報酬計算",
-    "Standard 4B": "標準4B",
-    "Standard 4C": "標準4C",
-    "Incident reporting procedures": "事件報告程序",
-    "Detection mechanisms": "偵測機制",
-    "Employee classification": "員工分類",
-    "Contract work": "契約工作",
-    "Duties to employers": "對雇主的職責",
-    "Gifts, benefits, compensation or consideration": "禮物、利益、報酬或對價",
-    "Violations of applicable laws, rules, regulations, and the code and standards": "違反適用法律、規則、法規以及行為準則與標準",
-    "Competition policy": "競爭政策",
-    "Confidence Interval": "信賴區間",
-    "P-value": "P值",
-    "Non-controlling Interest": "非控制權益",
-    "Modigliani-Miller Theorem": "莫迪里安尼-米勒定理",
-    "Dividend Payout Ratio": "股利發放率",
-    "Zero-Coupon Bond": "零息債券",
-    "Strike Price": "履約價格",
-    "Limited Partnership": "有限合夥",
-    "Rebalancing": "再平衡",
-    "Comparative Advantage": "比較利益",
-    "Board of Directors": "董事會",
-    "Custody bank": "託管銀行",
-    "Payment settlement": "支付結算",
-    "Accounts clearing firm": "帳戶清算公司",
-    "Stated investment objective": "既定投資目標",
-    "Bank secrecy havens": "銀行保密港",
-    "Money laundering activity": "洗錢活動",
-    "Anti-money laundering reports": "反洗錢報告",
-    "Reimbursable expenses": "可報銷費用",
-    "Overcharging": "超額收費"
+    "Abilities": {
+        "val": "能力",
+        "hits": 0
+    },
+    "Abstract": {
+        "val": "抽象的",
+        "hits": 0
+    },
+    "Accept": {
+        "val": "接受",
+        "hits": 0
+    },
+    "Account manager": {
+        "val": "客戶經理",
+        "hits": 0
+    },
+    "Accounting Standards": {
+        "val": "會計準則",
+        "hits": 0
+    },
+    "Accounting policy": {
+        "val": "會計政策",
+        "hits": 0
+    },
+    "Accounting standard": {
+        "val": "會計準則",
+        "hits": 0
+    },
+    "Accounts clearing firm": {
+        "val": "帳戶清算公司",
+        "hits": 0
+    },
+    "Accrual Accounting": {
+        "val": "應計會計",
+        "hits": 0
+    },
+    "Accuracy of returns": {
+        "val": "報酬準確性",
+        "hits": 0
+    },
+    "Acquisition": {
+        "val": "收購",
+        "hits": 0
+    },
+    "Additional Compensation Arrangements": {
+        "val": "額外報酬安排",
+        "hits": 0
+    },
+    "Adjusted EBITDA": {
+        "val": "調整後EBITDA",
+        "hits": 0
+    },
+    "Agency Problem": {
+        "val": "代理問題",
+        "hits": 0
+    },
+    "Algorithms": {
+        "val": "演算法",
+        "hits": 0
+    },
+    "Alignment of strategy and results": {
+        "val": "策略與成果一致性",
+        "hits": 0
+    },
+    "Alternative Investments": {
+        "val": "另類投資",
+        "hits": 0
+    },
+    "Amortization": {
+        "val": "攤銷",
+        "hits": 0
+    },
+    "Analyst Effect": {
+        "val": "分析師效應",
+        "hits": 0
+    },
+    "Analyst meeting": {
+        "val": "分析師會議",
+        "hits": 0
+    },
+    "Analyst's rating": {
+        "val": "分析師評級",
+        "hits": 0
+    },
+    "Analyze and interpret data": {
+        "val": "分析與解釋數據",
+        "hits": 0
+    },
+    "Annual professional conduct statement": {
+        "val": "年度專業行為聲明",
+        "hits": 0
+    },
+    "Annuity": {
+        "val": "年金",
+        "hits": 0
+    },
+    "Anti-money laundering reports": {
+        "val": "反洗錢報告",
+        "hits": 0
+    },
+    "Arbitrage": {
+        "val": "套利",
+        "hits": 0
+    },
+    "Asset Allocation": {
+        "val": "資產配置",
+        "hits": 0
+    },
+    "Asset Manager Code of Professional Conduct": {
+        "val": "資產管理業者專業行為準則",
+        "hits": 0
+    },
+    "Asset class": {
+        "val": "資產類別",
+        "hits": 0
+    },
+    "Asset owners": {
+        "val": "資產所有者",
+        "hits": 0
+    },
+    "Asset-based fee": {
+        "val": "按資產計費",
+        "hits": 0
+    },
+    "Assets": {
+        "val": "資產",
+        "hits": 0
+    },
+    "Assets under management": {
+        "val": "管理資產規模",
+        "hits": 0
+    },
+    "Assumptions": {
+        "val": "假設",
+        "hits": 0
+    },
+    "At the market order": {
+        "val": "市價單",
+        "hits": 0
+    },
+    "Audit reports": {
+        "val": "查核報告",
+        "hits": 0
+    },
+    "Autocorrelation": {
+        "val": "Correlation between a time series and its lagged values.",
+        "hits": 1
+    },
+    "Avoid or disclose": {
+        "val": "避免或揭露",
+        "hits": 0
+    },
+    "Balance Sheet": {
+        "val": "資產負債表",
+        "hits": 0
+    },
+    "Bank secrecy havens": {
+        "val": "銀行保密港",
+        "hits": 0
+    },
+    "Basic EPS": {
+        "val": "基本每股盈餘",
+        "hits": 0
+    },
+    "Behavioral Finance": {
+        "val": "行為財務學",
+        "hits": 0
+    },
+    "Benchmarks": {
+        "val": "基準",
+        "hits": 0
+    },
+    "Beneficiary": {
+        "val": "受益人",
+        "hits": 0
+    },
+    "Benefit": {
+        "val": "利益",
+        "hits": 0
+    },
+    "Beta": {
+        "val": "貝他係數",
+        "hits": 0
+    },
+    "Board of Directors": {
+        "val": "董事會",
+        "hits": 0
+    },
+    "Board of Governors": {
+        "val": "董事會",
+        "hits": 0
+    },
+    "Board of Trustees": {
+        "val": "董事會",
+        "hits": 0
+    },
+    "Bond": {
+        "val": "債券",
+        "hits": 0
+    },
+    "Book Value Per Share (BVPS)": {
+        "val": "每股淨值",
+        "hits": 0
+    },
+    "Boutique research firm": {
+        "val": "精品研究公司",
+        "hits": 0
+    },
+    "Brand name": {
+        "val": "品牌名稱",
+        "hits": 0
+    },
+    "Broker/dealer": {
+        "val": "證券經紀商/自營商",
+        "hits": 0
+    },
+    "Brokerage Commissions": {
+        "val": "經紀佣金",
+        "hits": 0
+    },
+    "Brokerage Firm": {
+        "val": "證券經紀商",
+        "hits": 0
+    },
+    "Business Cycle": {
+        "val": "景氣循環",
+        "hits": 0
+    },
+    "Business acumen": {
+        "val": "商業敏銳度",
+        "hits": 0
+    },
+    "Business combination": {
+        "val": "企業合併",
+        "hits": 0
+    },
+    "Buy order": {
+        "val": "買單",
+        "hits": 0
+    },
+    "Buy-side firms": {
+        "val": "買方機構",
+        "hits": 0
+    },
+    "CEO": {
+        "val": "執行長",
+        "hits": 0
+    },
+    "CFA": {
+        "val": "特許金融分析師",
+        "hits": 0
+    },
+    "CFA Institute Code and Standards": {
+        "val": "CFA協會職業道德準則與專業行為標準",
+        "hits": 0
+    },
+    "CFA charter holders": {
+        "val": "CFA特許資格持有人",
+        "hits": 0
+    },
+    "Calculation of returns": {
+        "val": "報酬計算",
+        "hits": 0
+    },
+    "Callable Bond": {
+        "val": "A bond that the issuer may redeem before maturity.",
+        "hits": 1
+    },
+    "Capital Asset Pricing Model (CAPM)": {
+        "val": "資本資產定價模型",
+        "hits": 0
+    },
+    "Capital Budgeting": {
+        "val": "資本預算",
+        "hits": 0
+    },
+    "Capital Structure": {
+        "val": "資本結構",
+        "hits": 0
+    },
+    "Capital markets": {
+        "val": "資本市場",
+        "hits": 0
+    },
+    "Capitalized": {
+        "val": "資本化",
+        "hits": 0
+    },
+    "Carrying amount": {
+        "val": "帳面金額",
+        "hits": 0
+    },
+    "Cash Flow": {
+        "val": "現金流",
+        "hits": 0
+    },
+    "Civil litigation": {
+        "val": "民事訴訟",
+        "hits": 0
+    },
+    "Civil regulator": {
+        "val": "民事監管機構",
+        "hits": 0
+    },
+    "Claims compliance": {
+        "val": "聲稱符合規範",
+        "hits": 0
+    },
+    "Clearing": {
+        "val": "清算",
+        "hits": 0
+    },
+    "Client": {
+        "val": "客戶",
+        "hits": 0
+    },
+    "Client benefit": {
+        "val": "客戶利益",
+        "hits": 0
+    },
+    "Client confidentiality": {
+        "val": "客戶機密性",
+        "hits": 0
+    },
+    "Client restrictions": {
+        "val": "客戶限制",
+        "hits": 0
+    },
+    "Code of ethics": {
+        "val": "道德準則",
+        "hits": 0
+    },
+    "Collect data": {
+        "val": "收集數據",
+        "hits": 0
+    },
+    "Collectibility": {
+        "val": "可收回性",
+        "hits": 0
+    },
+    "Commitment to serve others": {
+        "val": "服務他人的承諾",
+        "hits": 0
+    },
+    "Committed Investments": {
+        "val": "承諾投資",
+        "hits": 0
+    },
+    "Commodities": {
+        "val": "大宗商品",
+        "hits": 0
+    },
+    "Common Stock": {
+        "val": "普通股",
+        "hits": 0
+    },
+    "Common size statements": {
+        "val": "共同比報表",
+        "hits": 0
+    },
+    "Company": {
+        "val": "公司",
+        "hits": 0
+    },
+    "Company Insider": {
+        "val": "公司內部人",
+        "hits": 0
+    },
+    "Comparability of results": {
+        "val": "結果可比性",
+        "hits": 0
+    },
+    "Comparative Advantage": {
+        "val": "比較利益",
+        "hits": 0
+    },
+    "Compensation": {
+        "val": "報酬",
+        "hits": 0
+    },
+    "Competence": {
+        "val": "勝任能力",
+        "hits": 0
+    },
+    "Competition policy": {
+        "val": "競爭政策",
+        "hits": 0
+    },
+    "Competitive Business": {
+        "val": "競爭性業務",
+        "hits": 0
+    },
+    "Complaining party": {
+        "val": "投訴方",
+        "hits": 0
+    },
+    "Compliance programs": {
+        "val": "合規計畫",
+        "hits": 0
+    },
+    "Composite": {
+        "val": "綜合績效",
+        "hits": 0
+    },
+    "Compromise": {
+        "val": "損害",
+        "hits": 0
+    },
+    "Conceptual Framework": {
+        "val": "觀念架構",
+        "hits": 0
+    },
+    "Concrete": {
+        "val": "具體的",
+        "hits": 0
+    },
+    "Conduct inquiries": {
+        "val": "進行調查",
+        "hits": 0
+    },
+    "Confidence Interval": {
+        "val": "信賴區間",
+        "hits": 0
+    },
+    "Confidential exam material": {
+        "val": "機密考試材料",
+        "hits": 0
+    },
+    "Conflicts of Interest": {
+        "val": "利益衝突",
+        "hits": 0
+    },
+    "Consequences": {
+        "val": "後果",
+        "hits": 0
+    },
+    "Contingent Liabilities": {
+        "val": "或有負債",
+        "hits": 0
+    },
+    "Continuing Professional Education (CPE)": {
+        "val": "持續專業教育",
+        "hits": 0
+    },
+    "Contract with a customer": {
+        "val": "客戶合約",
+        "hits": 0
+    },
+    "Contract work": {
+        "val": "契約工作",
+        "hits": 0
+    },
+    "Converged standard": {
+        "val": "趨同準則",
+        "hits": 0
+    },
+    "Convertible securities": {
+        "val": "可轉換證券",
+        "hits": 0
+    },
+    "Convexity": {
+        "val": "凸性",
+        "hits": 0
+    },
+    "Corporate Governance": {
+        "val": "公司治理",
+        "hits": 0
+    },
+    "Corporate Issuers": {
+        "val": "企業發行商",
+        "hits": 0
+    },
+    "Correlation": {
+        "val": "相關性",
+        "hits": 0
+    },
+    "Cost of Debt": {
+        "val": "債務成本",
+        "hits": 0
+    },
+    "Cost of Equity": {
+        "val": "股權成本",
+        "hits": 0
+    },
+    "Cost of goods sold": {
+        "val": "銷貨成本",
+        "hits": 0
+    },
+    "Country of expected sale": {
+        "val": "預期銷售國",
+        "hits": 0
+    },
+    "Country of origination": {
+        "val": "原產國",
+        "hits": 0
+    },
+    "Coupon Rate": {
+        "val": "票面利率",
+        "hits": 0
+    },
+    "Credit Risk": {
+        "val": "信用風險",
+        "hits": 0
+    },
+    "Credit Spread": {
+        "val": "The difference in yield between a credit-risky bond and a default-free bond of the same maturity.",
+        "hits": 1
+    },
+    "Creditworthiness": {
+        "val": "信用評等",
+        "hits": 0
+    },
+    "Criminal investigations": {
+        "val": "刑事調查",
+        "hits": 0
+    },
+    "Critical success factors": {
+        "val": "關鍵成功因素",
+        "hits": 0
+    },
+    "Cross-sectional": {
+        "val": "橫斷面",
+        "hits": 0
+    },
+    "Custodian": {
+        "val": "託管機構",
+        "hits": 0
+    },
+    "Custody": {
+        "val": "託管",
+        "hits": 0
+    },
+    "Custody bank": {
+        "val": "託管銀行",
+        "hits": 0
+    },
+    "Customer lists": {
+        "val": "客戶名單",
+        "hits": 0
+    },
+    "Default Risk": {
+        "val": "違約風險",
+        "hits": 0
+    },
+    "Deferred tax asset (DTA)": {
+        "val": "遞延所得稅資產",
+        "hits": 0
+    },
+    "Deferred tax liability (DTL)": {
+        "val": "遞延所得稅負債",
+        "hits": 0
+    },
+    "Definition of discretion": {
+        "val": "裁量權定義",
+        "hits": 0
+    },
+    "Definition of the firm": {
+        "val": "公司定義",
+        "hits": 0
+    },
+    "Delegation": {
+        "val": "職務委派",
+        "hits": 0
+    },
+    "Depreciation": {
+        "val": "折舊",
+        "hits": 0
+    },
+    "Depreciation Methods": {
+        "val": "折舊方法",
+        "hits": 0
+    },
+    "Derivatives": {
+        "val": "衍生性商品",
+        "hits": 0
+    },
+    "Detection mechanisms": {
+        "val": "偵測機制",
+        "hits": 0
+    },
+    "Development costs": {
+        "val": "開發成本",
+        "hits": 0
+    },
+    "Diligence": {
+        "val": "勤勉",
+        "hits": 0
+    },
+    "Diluted EPS": {
+        "val": "稀釋每股盈餘",
+        "hits": 0
+    },
+    "Disciplinary Review Committee": {
+        "val": "紀律審查委員會",
+        "hits": 0
+    },
+    "Disciplinary action": {
+        "val": "紀律處分",
+        "hits": 0
+    },
+    "Disclosure": {
+        "val": "揭露",
+        "hits": 0
+    },
+    "Disclosures of cost": {
+        "val": "成本揭露",
+        "hits": 0
+    },
+    "Discontinued operations": {
+        "val": "停業單位",
+        "hits": 0
+    },
+    "Discount Rate": {
+        "val": "折現率",
+        "hits": 0
+    },
+    "Discounted Cash Flow (DCF)": {
+        "val": "折現現金流量",
+        "hits": 0
+    },
+    "Disseminated equitably": {
+        "val": "公平傳播",
+        "hits": 0
+    },
+    "Dissociate": {
+        "val": "脫離關係",
+        "hits": 0
+    },
+    "Distributors": {
+        "val": "經銷商",
+        "hits": 0
+    },
+    "Dividend": {
+        "val": "股利",
+        "hits": 0
+    },
+    "Dividend Discount Model (DDM)": {
+        "val": "股利折現模型",
+        "hits": 0
+    },
+    "Dividend Payout Ratio": {
+        "val": "股利發放率",
+        "hits": 0
+    },
+    "DuPont Analysis": {
+        "val": "杜邦分析",
+        "hits": 0
+    },
+    "Duration": {
+        "val": "存續期間",
+        "hits": 0
+    },
+    "Duties to employers": {
+        "val": "對雇主的職責",
+        "hits": 0
+    },
+    "Duty of loyalty": {
+        "val": "忠誠義務",
+        "hits": 0
+    },
+    "EBIT (Earnings Before Interest and Taxes)": {
+        "val": "息前稅前盈餘",
+        "hits": 0
+    },
+    "EOCQs": {
+        "val": "章末習題",
+        "hits": 0
+    },
+    "ESG analyst": {
+        "val": "ESG分析師",
+        "hits": 0
+    },
+    "ESG investment specialist certificate": {
+        "val": "ESG投資專家證書",
+        "hits": 0
+    },
+    "Earnings Per Share (EPS)": {
+        "val": "每股盈餘",
+        "hits": 0
+    },
+    "Economics": {
+        "val": "經濟學",
+        "hits": 0
+    },
+    "Efficient Frontier": {
+        "val": "有效率前緣",
+        "hits": 0
+    },
+    "Efficient Market Hypothesis (EMH)": {
+        "val": "效率市場假說",
+        "hits": 0
+    },
+    "Elasticity": {
+        "val": "彈性",
+        "hits": 0
+    },
+    "Employee classification": {
+        "val": "員工分類",
+        "hits": 0
+    },
+    "Employee trading": {
+        "val": "員工交易",
+        "hits": 0
+    },
+    "Endemic": {
+        "val": "普遍存在的",
+        "hits": 0
+    },
+    "Endowment Fund": {
+        "val": "捐贈基金",
+        "hits": 0
+    },
+    "Enterprise Value (EV)": {
+        "val": "企業價值",
+        "hits": 0
+    },
+    "Enterprise Value to EBITDA (EV/EBITDA)": {
+        "val": "企業價值/EBITDA比率",
+        "hits": 0
+    },
+    "Entity": {
+        "val": "實體",
+        "hits": 0
+    },
+    "Environmental, Social, and Governance (ESG) ratings": {
+        "val": "環境、社會與治理 (ESG) 評級",
+        "hits": 0
+    },
+    "Equity": {
+        "val": "權益/股權",
+        "hits": 0
+    },
+    "Equity-Oriented Clients": {
+        "val": "股票導向客戶",
+        "hits": 0
+    },
+    "Ethical conduct": {
+        "val": "倫理行為",
+        "hits": 0
+    },
+    "Ethics": {
+        "val": "倫理道德",
+        "hits": 0
+    },
+    "Ex ante basis": {
+        "val": "事前基礎",
+        "hits": 0
+    },
+    "Ex post basis": {
+        "val": "事後基礎",
+        "hits": 0
+    },
+    "Exam proctors": {
+        "val": "考試監考人員",
+        "hits": 0
+    },
+    "Excludes portfolios": {
+        "val": "排除投資組合",
+        "hits": 0
+    },
+    "Expensed": {
+        "val": "費用化",
+        "hits": 0
+    },
+    "External advisors": {
+        "val": "外部經理人",
+        "hits": 0
+    },
+    "FASB (Financial Accounting Standards Board)": {
+        "val": "財務會計準則委員會",
+        "hits": 0
+    },
+    "Fair Dealing": {
+        "val": "公平交易",
+        "hits": 0
+    },
+    "Fair presentation": {
+        "val": "公允表達",
+        "hits": 0
+    },
+    "Fee-paying discretionary portfolios": {
+        "val": "支付費用之全權委託投資組合",
+        "hits": 0
+    },
+    "Fiduciary duty": {
+        "val": "信託義務",
+        "hits": 0
+    },
+    "Finance Lease": {
+        "val": "融資租賃",
+        "hits": 0
+    },
+    "Financial Reporting Standards": {
+        "val": "財務報導準則",
+        "hits": 0
+    },
+    "Financial Statement Analysis": {
+        "val": "財務報表分析",
+        "hits": 0
+    },
+    "Financial Statement Analysis Framework": {
+        "val": "財務報表分析框架",
+        "hits": 0
+    },
+    "Financial institutions": {
+        "val": "金融機構",
+        "hits": 0
+    },
+    "Financial planning": {
+        "val": "財務規劃",
+        "hits": 0
+    },
+    "Finite life": {
+        "val": "有限耐用年限",
+        "hits": 0
+    },
+    "Firewall": {
+        "val": "防火牆",
+        "hits": 0
+    },
+    "Firm's policies and procedures": {
+        "val": "公司政策與程序",
+        "hits": 0
+    },
+    "Firm-wide compliance": {
+        "val": "全公司範圍遵循",
+        "hits": 0
+    },
+    "Firm-wide process": {
+        "val": "全公司流程",
+        "hits": 0
+    },
+    "Fiscal Policy": {
+        "val": "財政政策",
+        "hits": 0
+    },
+    "Fixed Income": {
+        "val": "固定收益",
+        "hits": 0
+    },
+    "Formal Client Relationship": {
+        "val": "正式客戶關係",
+        "hits": 0
+    },
+    "Forward Contract": {
+        "val": "遠期契約",
+        "hits": 0
+    },
+    "Framework of practice and behavior": {
+        "val": "實踐與行為框架",
+        "hits": 0
+    },
+    "Free Cash Flow to Equity (FCFE)": {
+        "val": "股東自由現金流量",
+        "hits": 0
+    },
+    "Free Cash Flow to Firm (FCFF)": {
+        "val": "公司自由現金流量",
+        "hits": 0
+    },
+    "Free Float": {
+        "val": "The number of shares available for trading by the general public, excluding shares held by insiders, governments, or strategic investors.",
+        "hits": 1
+    },
+    "Free cash flows": {
+        "val": "自由現金流量",
+        "hits": 0
+    },
+    "Front running": {
+        "val": "搶先交易",
+        "hits": 0
+    },
+    "Full disclosure": {
+        "val": "充分揭露",
+        "hits": 0
+    },
+    "Fundamental Analysis": {
+        "val": "基本分析",
+        "hits": 0
+    },
+    "Future Value (FV)": {
+        "val": "未來價值",
+        "hits": 0
+    },
+    "Futures Contract": {
+        "val": "期貨合約",
+        "hits": 0
+    },
+    "GAAP": {
+        "val": "一般公認會計原則",
+        "hits": 0
+    },
+    "GIPS": {
+        "val": "GIPS",
+        "hits": 0
+    },
+    "GIPS standards": {
+        "val": "GIPS準則",
+        "hits": 0
+    },
+    "Gamma": {
+        "val": "A second-order derivative measure of an option's price sensitivity to changes in the underlying asset's price.",
+        "hits": 1
+    },
+    "Geographical offices": {
+        "val": "地理辦事處",
+        "hits": 0
+    },
+    "Geopolitical consulting firm": {
+        "val": "地緣政治諮詢公司",
+        "hits": 0
+    },
+    "Gift": {
+        "val": "贈禮",
+        "hits": 0
+    },
+    "Gifts, benefits, compensation or consideration": {
+        "val": "禮物、利益、報酬或對價",
+        "hits": 0
+    },
+    "Global Investment Performance Standards": {
+        "val": "全球投資績效標準",
+        "hits": 0
+    },
+    "Goodwill": {
+        "val": "商譽",
+        "hits": 0
+    },
+    "Goodwill Impairment": {
+        "val": "商譽減損",
+        "hits": 0
+    },
+    "Gross Domestic Product (GDP)": {
+        "val": "國內生產毛額",
+        "hits": 0
+    },
+    "Gross margin": {
+        "val": "毛利率",
+        "hits": 0
+    },
+    "Gross profit": {
+        "val": "銷貨毛利",
+        "hits": 0
+    },
+    "Guarantying future results": {
+        "val": "保證未來績效",
+        "hits": 0
+    },
+    "Guidance": {
+        "val": "指引",
+        "hits": 0
+    },
+    "Hedge fund": {
+        "val": "對沖基金",
+        "hits": 0
+    },
+    "Hedging": {
+        "val": "避險",
+        "hits": 0
+    },
+    "Heteroskedasticity": {
+        "val": "A condition in which the variance of the error term in a regression model is not constant across all levels of the independent variables.",
+        "hits": 1
+    },
+    "High-net-worth individuals (HNWI)": {
+        "val": "高淨值個人",
+        "hits": 0
+    },
+    "Holdings": {
+        "val": "持有部位",
+        "hits": 0
+    },
+    "Hypothesis Testing": {
+        "val": "假設檢定",
+        "hits": 0
+    },
+    "IASB (International Accounting Standards Board)": {
+        "val": "國際會計準則理事會",
+        "hits": 0
+    },
+    "IFRS (International Financial Reporting Standards)": {
+        "val": "國際財務報導準則",
+        "hits": 0
+    },
+    "Immunization": {
+        "val": "A strategy to protect a portfolio from interest rate risk by matching the duration of assets and liabilities.",
+        "hits": 1
+    },
+    "Incident reporting procedures": {
+        "val": "事件報告程序",
+        "hits": 0
+    },
+    "Income Statement": {
+        "val": "損益表",
+        "hits": 0
+    },
+    "Indefinite life": {
+        "val": "無限耐用年限",
+        "hits": 0
+    },
+    "Independence and objectivity": {
+        "val": "獨立性與客觀性",
+        "hits": 0
+    },
+    "Independent Contractor": {
+        "val": "獨立承包商",
+        "hits": 0
+    },
+    "Independent practice": {
+        "val": "獨立執業",
+        "hits": 0
+    },
+    "Independent third party": {
+        "val": "獨立第三方",
+        "hits": 0
+    },
+    "Independent verification firm": {
+        "val": "獨立驗證公司",
+        "hits": 0
+    },
+    "Index fund": {
+        "val": "指數型基金",
+        "hits": 0
+    },
+    "Inflated Recommendation": {
+        "val": "誇大推薦",
+        "hits": 0
+    },
+    "Inflation": {
+        "val": "通貨膨脹",
+        "hits": 0
+    },
+    "Information barrier": {
+        "val": "資訊屏障",
+        "hits": 0
+    },
+    "Initial measurement": {
+        "val": "初始衡量",
+        "hits": 0
+    },
+    "Input": {
+        "val": "輸入",
+        "hits": 0
+    },
+    "Intangible assets": {
+        "val": "無形資產",
+        "hits": 0
+    },
+    "Integrity": {
+        "val": "誠信",
+        "hits": 0
+    },
+    "Interaction effect": {
+        "val": "交互作用效應",
+        "hits": 0
+    },
+    "Interest Rate": {
+        "val": "利率",
+        "hits": 0
+    },
+    "Interest Rate Risk": {
+        "val": "利率風險",
+        "hits": 0
+    },
+    "Internal Rate of Return (IRR)": {
+        "val": "內部報酬率",
+        "hits": 0
+    },
+    "Inventory Valuation": {
+        "val": "存貨評價",
+        "hits": 0
+    },
+    "Investment Manager": {
+        "val": "投資經理人",
+        "hits": 0
+    },
+    "Investment Policy Statement (IPS)": {
+        "val": "投資政策聲明 (IPS)",
+        "hits": 0
+    },
+    "Investment adviser": {
+        "val": "投資顧問",
+        "hits": 0
+    },
+    "Investment analysis": {
+        "val": "投資分析",
+        "hits": 0
+    },
+    "Investment banking department": {
+        "val": "投資銀行部門",
+        "hits": 0
+    },
+    "Investment banks": {
+        "val": "投資銀行",
+        "hits": 0
+    },
+    "Investment mandate": {
+        "val": "投資指令",
+        "hits": 0
+    },
+    "Investment models": {
+        "val": "投資模型",
+        "hits": 0
+    },
+    "Investment products": {
+        "val": "投資產品",
+        "hits": 0
+    },
+    "Investment professionals": {
+        "val": "投資專業人士",
+        "hits": 0
+    },
+    "Investment strategies implementation": {
+        "val": "投資策略執行",
+        "hits": 0
+    },
+    "Issuer": {
+        "val": "發行人",
+        "hits": 0
+    },
+    "Issuer-paid research": {
+        "val": "發行人付費研究",
+        "hits": 0
+    },
+    "Issues of interpretation": {
+        "val": "解釋問題",
+        "hits": 0
+    },
+    "Jurisdiction": {
+        "val": "管轄權",
+        "hits": 0
+    },
+    "KYM (Know Your Mandate)": {
+        "val": "了解您的任務",
+        "hits": 0
+    },
+    "Know-your-client information (KYC)": {
+        "val": "了解客戶資訊",
+        "hits": 0
+    },
+    "Knowingly participate or assist": {
+        "val": "知情參與或協助",
+        "hits": 0
+    },
+    "Knowledge": {
+        "val": "知識",
+        "hits": 0
+    },
+    "LOS (Learning Outcome Statement)": {
+        "val": "學習成果說明",
+        "hits": 0
+    },
+    "Law": {
+        "val": "法律",
+        "hits": 0
+    },
+    "Learning Module": {
+        "val": "學習模組",
+        "hits": 0
+    },
+    "Level 1": {
+        "val": "第一級",
+        "hits": 0
+    },
+    "Liabilities": {
+        "val": "負債",
+        "hits": 0
+    },
+    "Licensing agency": {
+        "val": "許可機構",
+        "hits": 0
+    },
+    "Licensing requirement": {
+        "val": "執照要求",
+        "hits": 0
+    },
+    "Limit Order": {
+        "val": "限價單",
+        "hits": 0
+    },
+    "Limited Partnership": {
+        "val": "有限合夥",
+        "hits": 0
+    },
+    "Long-term": {
+        "val": "長期",
+        "hits": 0
+    },
+    "Long-term track record": {
+        "val": "長期績效紀錄",
+        "hits": 0
+    },
+    "Low-cost provider": {
+        "val": "低成本供應商",
+        "hits": 0
+    },
+    "Loyalty": {
+        "val": "忠誠",
+        "hits": 0
+    },
+    "M&A (Mergers & Acquisitions)": {
+        "val": "併購",
+        "hits": 0
+    },
+    "Manageable set of data": {
+        "val": "可管理數據集",
+        "hits": 0
+    },
+    "Market Capitalization": {
+        "val": "市值",
+        "hits": 0
+    },
+    "Market manipulation": {
+        "val": "市場操縱",
+        "hits": 0
+    },
+    "Market participants": {
+        "val": "市場參與者",
+        "hits": 0
+    },
+    "Material, non-public information": {
+        "val": "重大非公開資訊",
+        "hits": 0
+    },
+    "Maturity Date": {
+        "val": "到期日",
+        "hits": 0
+    },
+    "Mean": {
+        "val": "平均數",
+        "hits": 0
+    },
+    "Measurement": {
+        "val": "衡量",
+        "hits": 0
+    },
+    "Member or candidate": {
+        "val": "會員或考生",
+        "hits": 0
+    },
+    "Methodology": {
+        "val": "研究方法",
+        "hits": 0
+    },
+    "Micro-cap companies": {
+        "val": "微型市值公司",
+        "hits": 0
+    },
+    "Minimally acceptable behaviors": {
+        "val": "最低可接受行為",
+        "hits": 0
+    },
+    "Misconduct": {
+        "val": "不當行為",
+        "hits": 0
+    },
+    "Misleading practices": {
+        "val": "誤導性行為",
+        "hits": 0
+    },
+    "Misrepresentations": {
+        "val": "虛假陳述",
+        "hits": 0
+    },
+    "Modern Portfolio Theory (MPT)": {
+        "val": "現代投資組合理論",
+        "hits": 0
+    },
+    "Modigliani-Miller Theorem": {
+        "val": "莫迪里安尼-米勒定理",
+        "hits": 0
+    },
+    "Monetary Policy": {
+        "val": "貨幣政策",
+        "hits": 0
+    },
+    "Money laundering activity": {
+        "val": "洗錢活動",
+        "hits": 0
+    },
+    "Moral principles": {
+        "val": "道德原則",
+        "hits": 0
+    },
+    "Mosaic Theory": {
+        "val": "馬賽克理論",
+        "hits": 0
+    },
+    "Multinational trade deal": {
+        "val": "跨國貿易協議",
+        "hits": 0
+    },
+    "Nature of services": {
+        "val": "服務性質",
+        "hits": 0
+    },
+    "Net Income": {
+        "val": "淨利",
+        "hits": 0
+    },
+    "Net Present Value (NPV)": {
+        "val": "淨現值",
+        "hits": 0
+    },
+    "Niche market": {
+        "val": "利基市場",
+        "hits": 0
+    },
+    "Non-compete agreement": {
+        "val": "競業禁止協議",
+        "hits": 0
+    },
+    "Non-controlling Interest": {
+        "val": "非控制權益",
+        "hits": 0
+    },
+    "Non-disclosure": {
+        "val": "保密協議",
+        "hits": 0
+    },
+    "Non-discretionary portfolios": {
+        "val": "非全權委託投資組合",
+        "hits": 0
+    },
+    "Non-material": {
+        "val": "非重大",
+        "hits": 0
+    },
+    "Normal Distribution": {
+        "val": "常態分佈",
+        "hits": 0
+    },
+    "Obligatory and forbidden conduct": {
+        "val": "應為與禁止行為",
+        "hits": 0
+    },
+    "Occupation": {
+        "val": "職業",
+        "hits": 0
+    },
+    "Operating Cycle": {
+        "val": "The average number of days required to convert inventory into cash.",
+        "hits": 1
+    },
+    "Operating Lease": {
+        "val": "營業租賃",
+        "hits": 0
+    },
+    "Operating Leverage": {
+        "val": "營運槓桿",
+        "hits": 0
+    },
+    "Operating cash flows": {
+        "val": "營運現金流量",
+        "hits": 0
+    },
+    "Operating expenses": {
+        "val": "營運費用",
+        "hits": 0
+    },
+    "Opportunity Cost": {
+        "val": "機會成本",
+        "hits": 0
+    },
+    "Option": {
+        "val": "選擇權",
+        "hits": 0
+    },
+    "Other comprehensive income (OCI)": {
+        "val": "其他綜合損益",
+        "hits": 0
+    },
+    "Out-of-pocket expenses": {
+        "val": "實報實銷費用",
+        "hits": 0
+    },
+    "Overcharging": {
+        "val": "超額收費",
+        "hits": 0
+    },
+    "Oversight body": {
+        "val": "監督機構",
+        "hits": 0
+    },
+    "P-value": {
+        "val": "P值",
+        "hits": 0
+    },
+    "Participants and Beneficiaries": {
+        "val": "參與者與受益人",
+        "hits": 0
+    },
+    "Participants and beneficiaries": {
+        "val": "參與者與受益人",
+        "hits": 0
+    },
+    "Patents": {
+        "val": "專利",
+        "hits": 0
+    },
+    "Payment settlement": {
+        "val": "支付結算",
+        "hits": 0
+    },
+    "Penny stock": {
+        "val": "低價股",
+        "hits": 0
+    },
+    "Pension Plan": {
+        "val": "退休金計畫",
+        "hits": 0
+    },
+    "Pension fund": {
+        "val": "退休基金",
+        "hits": 0
+    },
+    "Performance measures": {
+        "val": "績效衡量指標",
+        "hits": 0
+    },
+    "Performance obligations": {
+        "val": "履約義務",
+        "hits": 0
+    },
+    "Performance of function": {
+        "val": "職務執行",
+        "hits": 0
+    },
+    "Performance presentation": {
+        "val": "績效表達",
+        "hits": 0
+    },
+    "Periodic Reviews": {
+        "val": "定期審查",
+        "hits": 0
+    },
+    "Permanent difference": {
+        "val": "永久性差異",
+        "hits": 0
+    },
+    "Personal investing": {
+        "val": "個人投資",
+        "hits": 0
+    },
+    "Phase": {
+        "val": "階段",
+        "hits": 0
+    },
+    "Physical and informational barriers": {
+        "val": "實體與資訊隔離牆",
+        "hits": 0
+    },
+    "Physical barriers": {
+        "val": "實體屏障",
+        "hits": 0
+    },
+    "Planned expenditures": {
+        "val": "計畫支出",
+        "hits": 0
+    },
+    "Poor performing portfolio": {
+        "val": "績效不佳投資組合",
+        "hits": 0
+    },
+    "Portfolio Management": {
+        "val": "投資組合管理",
+        "hits": 0
+    },
+    "Portfolio assignment": {
+        "val": "投資組合歸屬",
+        "hits": 0
+    },
+    "Preferred Stock": {
+        "val": "特別股",
+        "hits": 0
+    },
+    "Present Value (PV)": {
+        "val": "現值",
+        "hits": 0
+    },
+    "Press releases": {
+        "val": "新聞稿",
+        "hits": 0
+    },
+    "Price Effect": {
+        "val": "價格影響",
+        "hits": 0
+    },
+    "Price-to-Book (P/B) Ratio": {
+        "val": "股價淨值比",
+        "hits": 0
+    },
+    "Price-to-Earnings (P/E) Ratio": {
+        "val": "本益比",
+        "hits": 0
+    },
+    "Prior approval": {
+        "val": "事前核准",
+        "hits": 0
+    },
+    "Priority of Transactions": {
+        "val": "交易優先順序",
+        "hits": 0
+    },
+    "Private Equity": {
+        "val": "私募股權",
+        "hits": 0
+    },
+    "Private Wealth Management Firm": {
+        "val": "私人財富管理公司",
+        "hits": 0
+    },
+    "Private pension fund": {
+        "val": "私人退休基金",
+        "hits": 0
+    },
+    "Probability Distribution": {
+        "val": "機率分佈",
+        "hits": 0
+    },
+    "Process data": {
+        "val": "處理數據",
+        "hits": 0
+    },
+    "Profession": {
+        "val": "專業",
+        "hits": 0
+    },
+    "Professional association": {
+        "val": "專業協會",
+        "hits": 0
+    },
+    "Professional bodies": {
+        "val": "專業團體",
+        "hits": 0
+    },
+    "Professional conduct program (PCP)": {
+        "val": "專業行為計畫 (PCP)",
+        "hits": 0
+    },
+    "Professional conduct staff": {
+        "val": "專業行為人員",
+        "hits": 0
+    },
+    "Professional regulator": {
+        "val": "專業監管機構",
+        "hits": 0
+    },
+    "Professionalism": {
+        "val": "專業精神",
+        "hits": 0
+    },
+    "Profitability measures": {
+        "val": "獲利能力衡量指標",
+        "hits": 0
+    },
+    "Prohibition from further participation": {
+        "val": "禁止進一步參與",
+        "hits": 0
+    },
+    "Proprietary Trading": {
+        "val": "自營交易",
+        "hits": 0
+    },
+    "Proprietary information": {
+        "val": "專有資訊",
+        "hits": 0
+    },
+    "Prospective clients": {
+        "val": "潛在客戶",
+        "hits": 0
+    },
+    "Public Dissemination": {
+        "val": "公開傳播",
+        "hits": 0
+    },
+    "Public censure": {
+        "val": "公開譴責",
+        "hits": 0
+    },
+    "Public information": {
+        "val": "公開資訊",
+        "hits": 0
+    },
+    "Purchase price": {
+        "val": "購買價格",
+        "hits": 0
+    },
+    "Purchase recommendation": {
+        "val": "買入建議",
+        "hits": 0
+    },
+    "Qualitative Characteristics": {
+        "val": "質性特性",
+        "hits": 0
+    },
+    "Quant metrics": {
+        "val": "量化指標",
+        "hits": 0
+    },
+    "Quantitative Methods": {
+        "val": "計量方法",
+        "hits": 0
+    },
+    "Quantitatively oriented research": {
+        "val": "量化導向研究",
+        "hits": 0
+    },
+    "Ratios": {
+        "val": "比率",
+        "hits": 0
+    },
+    "Real Estate": {
+        "val": "不動產",
+        "hits": 0
+    },
+    "Reasonable Efforts": {
+        "val": "合理努力",
+        "hits": 0
+    },
+    "Rebalancing": {
+        "val": "再平衡",
+        "hits": 0
+    },
+    "Recommendation": {
+        "val": "投資建議",
+        "hits": 0
+    },
+    "Record retention": {
+        "val": "紀錄保存",
+        "hits": 0
+    },
+    "Referral fee": {
+        "val": "介紹費",
+        "hits": 0
+    },
+    "Regression analysis": {
+        "val": "迴歸分析",
+        "hits": 0
+    },
+    "Regulators": {
+        "val": "監管機構",
+        "hits": 0
+    },
+    "Regulatory Compliance": {
+        "val": "法規遵循",
+        "hits": 0
+    },
+    "Regulatory Organizations": {
+        "val": "監管機構",
+        "hits": 0
+    },
+    "Regulatory attorney": {
+        "val": "法規律師",
+        "hits": 0
+    },
+    "Regulatory filings": {
+        "val": "監管申報文件",
+        "hits": 0
+    },
+    "Regulatory hurdle": {
+        "val": "監管障礙",
+        "hits": 0
+    },
+    "Reimbursable expenses": {
+        "val": "可報銷費用",
+        "hits": 0
+    },
+    "Reinvestment Risk": {
+        "val": "再投資風險",
+        "hits": 0
+    },
+    "Relevance": {
+        "val": "攸關性",
+        "hits": 0
+    },
+    "Replication": {
+        "val": "重現性",
+        "hits": 0
+    },
+    "Representative accounts": {
+        "val": "代表性帳戶",
+        "hits": 0
+    },
+    "Reputation": {
+        "val": "聲譽",
+        "hits": 0
+    },
+    "Request for a written explanation": {
+        "val": "要求書面解釋",
+        "hits": 0
+    },
+    "Required Rate of Return": {
+        "val": "要求報酬率",
+        "hits": 0
+    },
+    "Research Analyst": {
+        "val": "研究分析師",
+        "hits": 0
+    },
+    "Research coverage": {
+        "val": "研究涵蓋",
+        "hits": 0
+    },
+    "Research reports": {
+        "val": "研究報告",
+        "hits": 0
+    },
+    "Research universe": {
+        "val": "研究標的範圍",
+        "hits": 0
+    },
+    "Resignation": {
+        "val": "辭職",
+        "hits": 0
+    },
+    "Retained Earnings": {
+        "val": "保留盈餘",
+        "hits": 0
+    },
+    "Retrospective adjustment": {
+        "val": "追溯調整",
+        "hits": 0
+    },
+    "Return on Assets (ROA)": {
+        "val": "資產報酬率",
+        "hits": 0
+    },
+    "Return on Equity (ROE)": {
+        "val": "股東權益報酬率",
+        "hits": 0
+    },
+    "Revaluation model": {
+        "val": "重估價模型",
+        "hits": 0
+    },
+    "Revenue Recognition": {
+        "val": "收入認列",
+        "hits": 0
+    },
+    "Revocation of the CFA charter": {
+        "val": "撤銷CFA特許資格",
+        "hits": 0
+    },
+    "Rigor of the analysis": {
+        "val": "分析嚴謹度",
+        "hits": 0
+    },
+    "Risk Premium": {
+        "val": "風險溢價",
+        "hits": 0
+    },
+    "Risk-Free Rate": {
+        "val": "無風險利率",
+        "hits": 0
+    },
+    "Risks and rewards": {
+        "val": "風險與報酬",
+        "hits": 0
+    },
+    "SEC (Securities and Exchange Commission)": {
+        "val": "證券交易委員會",
+        "hits": 0
+    },
+    "SWIFT rate": {
+        "val": "SWIFT費率",
+        "hits": 0
+    },
+    "Secondary research": {
+        "val": "次級研究",
+        "hits": 0
+    },
+    "Secured loan": {
+        "val": "擔保貸款",
+        "hits": 0
+    },
+    "Security Exchange": {
+        "val": "證券交易所",
+        "hits": 0
+    },
+    "Selectively Disclosed": {
+        "val": "選擇性揭露",
+        "hits": 0
+    },
+    "Self-disclosure": {
+        "val": "自我揭露",
+        "hits": 0
+    },
+    "Self-interest": {
+        "val": "自身利益",
+        "hits": 0
+    },
+    "Sell-side firm": {
+        "val": "賣方機構",
+        "hits": 0
+    },
+    "Separate from the activity": {
+        "val": "脫離該活動",
+        "hits": 0
+    },
+    "Service Fees": {
+        "val": "服務費",
+        "hits": 0
+    },
+    "Settlement": {
+        "val": "交割",
+        "hits": 0
+    },
+    "Shareholders": {
+        "val": "股東",
+        "hits": 0
+    },
+    "Sharpe Ratio": {
+        "val": "夏普比率",
+        "hits": 0
+    },
+    "Significance Level": {
+        "val": "顯著水準",
+        "hits": 0
+    },
+    "Sinking Fund Provision": {
+        "val": "A provision in a bond indenture that requires the issuer to set aside funds periodically to retire the bond.",
+        "hits": 1
+    },
+    "Skills": {
+        "val": "技能",
+        "hits": 0
+    },
+    "Small-cap companies": {
+        "val": "小型市值公司",
+        "hits": 0
+    },
+    "Society for Worldwide Interbank Financial Telecommunication (SWIFT)": {
+        "val": "環球銀行金融電信協會 (SWIFT)",
+        "hits": 0
+    },
+    "Software vendor": {
+        "val": "軟體供應商",
+        "hits": 0
+    },
+    "Solicit": {
+        "val": "索取",
+        "hits": 0
+    },
+    "Solicit clients": {
+        "val": "招攬客戶",
+        "hits": 0
+    },
+    "Sovereign wealth fund (SWF)": {
+        "val": "主權財富基金 (SWF)",
+        "hits": 0
+    },
+    "Speculative": {
+        "val": "投機性",
+        "hits": 0
+    },
+    "Standard 1A": {
+        "val": "準則1A",
+        "hits": 0
+    },
+    "Standard 3B": {
+        "val": "準則3B",
+        "hits": 0
+    },
+    "Standard 4B": {
+        "val": "標準4B",
+        "hits": 0
+    },
+    "Standard 4C": {
+        "val": "標準4C",
+        "hits": 0
+    },
+    "Standard Deviation": {
+        "val": "標準差",
+        "hits": 0
+    },
+    "Standard I(C)": {
+        "val": "準則 I(C)",
+        "hits": 0
+    },
+    "Standard of care": {
+        "val": "注意義務標準",
+        "hits": 0
+    },
+    "Standard setters": {
+        "val": "準則制定者",
+        "hits": 0
+    },
+    "Standards of conduct": {
+        "val": "行為準則",
+        "hits": 0
+    },
+    "Stated investment objective": {
+        "val": "既定投資目標",
+        "hits": 0
+    },
+    "Statement of Cash Flows": {
+        "val": "現金流量表",
+        "hits": 0
+    },
+    "Statement of Comprehensive Income": {
+        "val": "綜合損益表",
+        "hits": 0
+    },
+    "Statutes": {
+        "val": "法規",
+        "hits": 0
+    },
+    "Stock price": {
+        "val": "股價",
+        "hits": 0
+    },
+    "Strict": {
+        "val": "嚴格",
+        "hits": 0
+    },
+    "Strict law or regulation": {
+        "val": "嚴格的法律或法規",
+        "hits": 0
+    },
+    "Strike Price": {
+        "val": "履約價格",
+        "hits": 0
+    },
+    "Study session": {
+        "val": "學習單元",
+        "hits": 0
+    },
+    "Subsidiaries": {
+        "val": "子公司",
+        "hits": 0
+    },
+    "Suitability": {
+        "val": "適當性",
+        "hits": 0
+    },
+    "Supervisory responsibility": {
+        "val": "監督職責",
+        "hits": 0
+    },
+    "Supply and Demand": {
+        "val": "供給與需求",
+        "hits": 0
+    },
+    "Survivorship bias": {
+        "val": "存活者偏差",
+        "hits": 0
+    },
+    "Suspension of membership": {
+        "val": "會籍暫停",
+        "hits": 0
+    },
+    "Swap": {
+        "val": "掉期",
+        "hits": 0
+    },
+    "Swaption": {
+        "val": "An option on a swap.",
+        "hits": 1
+    },
+    "Systematic Risk": {
+        "val": "系統性風險",
+        "hits": 0
+    },
+    "Tainted": {
+        "val": "蒙受污點的",
+        "hits": 0
+    },
+    "Tangible assets": {
+        "val": "有形資產",
+        "hits": 0
+    },
+    "Target": {
+        "val": "標的",
+        "hits": 0
+    },
+    "Target Return": {
+        "val": "目標報酬",
+        "hits": 0
+    },
+    "Tax base": {
+        "val": "稅基",
+        "hits": 0
+    },
+    "Technical Analysis": {
+        "val": "技術分析",
+        "hits": 0
+    },
+    "Temporary difference": {
+        "val": "暫時性差異",
+        "hits": 0
+    },
+    "Terminal Value": {
+        "val": "終端價值",
+        "hits": 0
+    },
+    "Terminated portfolios": {
+        "val": "已終止投資組合",
+        "hits": 0
+    },
+    "Third party research": {
+        "val": "第三方研究",
+        "hits": 0
+    },
+    "Third-party subadvisers": {
+        "val": "第三方次級顧問",
+        "hits": 0
+    },
+    "Time Value of Money": {
+        "val": "貨幣時間價值",
+        "hits": 0
+    },
+    "Time series": {
+        "val": "時間序列",
+        "hits": 0
+    },
+    "Top-down approach": {
+        "val": "由上而下法",
+        "hits": 0
+    },
+    "Total return": {
+        "val": "總報酬",
+        "hits": 0
+    },
+    "Trade secrets": {
+        "val": "商業機密",
+        "hits": 0
+    },
+    "Trademark": {
+        "val": "商標",
+        "hits": 0
+    },
+    "Transaction price": {
+        "val": "交易價格",
+        "hits": 0
+    },
+    "Transaction structure": {
+        "val": "交易結構",
+        "hits": 0
+    },
+    "Transfer of control": {
+        "val": "控制權移轉",
+        "hits": 0
+    },
+    "Trustworthiness": {
+        "val": "可信度",
+        "hits": 0
+    },
+    "US GAAP (United States Generally Accepted Accounting Principles)": {
+        "val": "美國一般公認會計原則",
+        "hits": 0
+    },
+    "Underlying Asset": {
+        "val": "標的資產",
+        "hits": 0
+    },
+    "Unearned revenue": {
+        "val": "預收收入",
+        "hits": 0
+    },
+    "Unreliable source": {
+        "val": "不可靠來源",
+        "hits": 0
+    },
+    "Unsystematic Risk": {
+        "val": "非系統性風險",
+        "hits": 0
+    },
+    "Updated reports recommendations": {
+        "val": "更新報告建議",
+        "hits": 0
+    },
+    "Useful life": {
+        "val": "耐用年限",
+        "hits": 0
+    },
+    "Valuation Multiples": {
+        "val": "估值倍數",
+        "hits": 0
+    },
+    "Value at Risk (VaR)": {
+        "val": "風險值",
+        "hits": 0
+    },
+    "Variance": {
+        "val": "變異數",
+        "hits": 0
+    },
+    "Varying time periods": {
+        "val": "期間不一",
+        "hits": 0
+    },
+    "Venture Capital": {
+        "val": "創業投資",
+        "hits": 0
+    },
+    "Verification": {
+        "val": "驗證",
+        "hits": 0
+    },
+    "Verification process": {
+        "val": "驗證流程",
+        "hits": 0
+    },
+    "Verifier": {
+        "val": "驗證者",
+        "hits": 0
+    },
+    "Vicarious liability": {
+        "val": "轉承責任",
+        "hits": 0
+    },
+    "Violation": {
+        "val": "違規",
+        "hits": 0
+    },
+    "Violations of applicable laws, rules, regulations, and the code and standards": {
+        "val": "違反適用法律、規則、法規以及行為準則與標準",
+        "hits": 0
+    },
+    "Vocation": {
+        "val": "天職",
+        "hits": 0
+    },
+    "Volume": {
+        "val": "成交量",
+        "hits": 0
+    },
+    "Wealth Management": {
+        "val": "財富管理",
+        "hits": 0
+    },
+    "Weighted Average Cost of Capital (WACC)": {
+        "val": "加權平均資金成本",
+        "hits": 0
+    },
+    "Weighted average number of shares outstanding": {
+        "val": "加權平均流通在外股數",
+        "hits": 0
+    },
+    "Whistle blow": {
+        "val": "吹哨",
+        "hits": 0
+    },
+    "Working Capital Management": {
+        "val": "營運資金管理",
+        "hits": 0
+    },
+    "Written Compliance Procedures": {
+        "val": "書面遵循程序",
+        "hits": 0
+    },
+    "Written complaint": {
+        "val": "書面投訴",
+        "hits": 0
+    },
+    "Written consent": {
+        "val": "書面同意",
+        "hits": 0
+    },
+    "Yield Curve": {
+        "val": "殖利率曲線",
+        "hits": 0
+    },
+    "Zero-Coupon Bond": {
+        "val": "零息債券",
+        "hits": 0
+    },
+    "accounting equation": {
+        "val": "會計恆等式",
+        "hits": 0
+    },
+    "amortization of the discount": {
+        "val": "折價攤銷",
+        "hits": 0
+    },
+    "amortization of the premium": {
+        "val": "溢價攤銷",
+        "hits": 0
+    },
+    "at a discount": {
+        "val": "折價",
+        "hits": 0
+    },
+    "at a premium": {
+        "val": "溢價",
+        "hits": 0
+    },
+    "best": {
+        "val": "Optimal or most effective approach, e.g., for study order.",
+        "hits": 1
+    },
+    "bonds payable": {
+        "val": "應付公司債",
+        "hits": 0
+    },
+    "book value": {
+        "val": "帳面價值",
+        "hits": 0
+    },
+    "closed-end investment fund": {
+        "val": "封閉型基金",
+        "hits": 0
+    },
+    "concerns": {
+        "val": "Issues or worries expressed by candidates about their studies or the program.",
+        "hits": 1
+    },
+    "current assets": {
+        "val": "流動資產",
+        "hits": 0
+    },
+    "current liabilities": {
+        "val": "流動負債",
+        "hits": 0
+    },
+    "diversification": {
+        "val": "分散投資",
+        "hits": 0
+    },
+    "effective interest rate": {
+        "val": "有效利率",
+        "hits": 0
+    },
+    "face value": {
+        "val": "面值",
+        "hits": 0
+    },
+    "fair value": {
+        "val": "公允價值",
+        "hits": 0
+    },
+    "feature": {
+        "val": "To present or highlight a specific instructor or content in educational material.",
+        "hits": 1
+    },
+    "foreign exchange": {
+        "val": "外匯",
+        "hits": 0
+    },
+    "future economic benefits": {
+        "val": "未來經濟效益",
+        "hits": 0
+    },
+    "game": {
+        "val": "A colloquial term referring to the overall process or challenge of pursuing the CFA charter.",
+        "hits": 1
+    },
+    "high concentration": {
+        "val": "高度集中",
+        "hits": 0
+    },
+    "instructors": {
+        "val": "Educators providing guidance and lectures for CFA candidates",
+        "hits": 1
+    },
+    "intrinsic value": {
+        "val": "內在價值",
+        "hits": 0
+    },
+    "introduction": {
+        "val": "The initial segment or overview of a study topic or curriculum level within the CFA program.",
+        "hits": 1
+    },
+    "investment vehicle": {
+        "val": "投資工具",
+        "hits": 0
+    },
+    "issued at par": {
+        "val": "平價發行",
+        "hits": 0
+    },
+    "knowledgeable": {
+        "val": "Possessing deep understanding and expertise, particularly relevant for CFA instructors and candidates in their studies.",
+        "hits": 1
+    },
+    "lectures": {
+        "val": "Educational presentations or lessons on CFA curriculum topics",
+        "hits": 1
+    },
+    "leverage": {
+        "val": "槓桿",
+        "hits": 0
+    },
+    "liquidation": {
+        "val": "強制平倉",
+        "hits": 0
+    },
+    "liquidity": {
+        "val": "流動性",
+        "hits": 0
+    },
+    "majority": {
+        "val": "The greater part or number, referring to the proportion of videos or instructors.",
+        "hits": 1
+    },
+    "margin requirements": {
+        "val": "保證金要求",
+        "hits": 0
+    },
+    "material": {
+        "val": "CFA curriculum content or study resources",
+        "hits": 1
+    },
+    "non-current assets": {
+        "val": "非流動資產",
+        "hits": 0
+    },
+    "non-current liabilities": {
+        "val": "非流動負債",
+        "hits": 0
+    },
+    "order": {
+        "val": "The recommended sequence or structure for studying the CFA curriculum material.",
+        "hits": 1
+    },
+    "prerequisite": {
+        "val": "Required prior knowledge or conditions for the CFA program",
+        "hits": 1
+    },
+    "prospectus": {
+        "val": "公開說明書",
+        "hits": 0
+    },
+    "prudence": {
+        "val": "審慎",
+        "hits": 0
+    },
+    "questions": {
+        "val": "Inquiries or problems posed by candidates regarding the CFA program.",
+        "hits": 1
+    },
+    "reasonable investor": {
+        "val": "理性投資人",
+        "hits": 0
+    },
+    "registered account representative": {
+        "val": "註冊客戶代表",
+        "hits": 0
+    },
+    "retail clients": {
+        "val": "零售客戶",
+        "hits": 0
+    },
+    "risk tolerance": {
+        "val": "風險承受度",
+        "hits": 0
+    },
+    "selective disclosure": {
+        "val": "選擇性揭露",
+        "hits": 0
+    },
+    "self-managed superannuation funds (SMSFs)": {
+        "val": "自營退休金基金",
+        "hits": 0
+    },
+    "site": {
+        "val": "The online platform or digital environment used to access CFA learning resources.",
+        "hits": 1
+    },
+    "solvency": {
+        "val": "償債能力",
+        "hits": 0
+    },
+    "spend": {
+        "val": "The allocation of time or resources for studying.",
+        "hits": 1
+    },
+    "studies": {
+        "val": "The process of learning and preparing for the CFA examinations",
+        "hits": 1
+    },
+    "studying": {
+        "val": "The act of learning and preparing for the CFA exam.",
+        "hits": 1
+    },
+    "superannuation pension accounts": {
+        "val": "退休金帳戶",
+        "hits": 0
+    },
+    "time": {
+        "val": "The duration or period required for CFA exam preparation.",
+        "hits": 1
+    },
+    "videos": {
+        "val": "A common multimedia format used for delivering instructional content and explanations in the CFA program.",
+        "hits": 1
+    },
+    "voice": {
+        "val": "The audio component of instructional content, often from an instructor.",
+        "hits": 1
+    },
+    "working capital": {
+        "val": "營運資金",
+        "hits": 0
+    },
+    "yield to maturity": {
+        "val": "到期殖利率",
+        "hits": 0
+    }
 }

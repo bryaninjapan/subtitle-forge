@@ -1,4 +1,4 @@
-"""Translation engine using Google Gemini API for subtitle translation.
+"""Translation engine using OpenRouter API for subtitle translation.
 
 Batches are sent concurrently using a ThreadPoolExecutor for maximum speed.
 """
@@ -7,290 +7,323 @@ from __future__ import annotations
 
 import os
 import time
+import random
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from glossary_manager import update_glossary_auto
-from usage_tracker import log_usage
-
+from typing import Optional, Dict, Any
+from glossary_manager import update_glossary_auto  # type: ignore
+from usage_tracker import log_usage  # type: ignore
+from openrouter_client import get_openrouter_client  # type: ignore
 
 from config import (
-    DEFAULT_GEMINI_MODEL,
+    OPENROUTER_TEXT_MODEL,
     load_glossary,
     TRANSLATION_BATCH_SIZE,
     TRANSLATION_MAX_CONCURRENT,
     TRANSLATION_SYSTEM_PROMPT,
-)
+    STYLE_TEMPLATES,
+    ENABLE_QA_SCORING,
+)  # type: ignore
+import json
 from srt_utils import (
     SrtEntry,
     batch_entries,
     format_batch_for_translation,
     parse_srt,
     parse_translation_response,
+    split_monolithic_entry,
     write_srt,
-)
+)  # type: ignore
+
+# Entries longer than this are almost certainly corrupted ASR output (entire transcript
+# dumped into one subtitle block).  We split them rather than sending to the API.
+_MAX_ENTRY_CHARS = 2_000
+
+from dataclasses import dataclass
+
+@dataclass
+class UsageData:
+    prompt_token_count: int
+    candidates_token_count: int
 
 
-def _get_gemini_client():
-    """Initialize and return a Gemini client."""
-    try:
-        from google import genai
-    except ImportError:
-        raise ImportError(
-            "google-genai is not installed. Run: pip install google-genai"
-        )
-
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise ValueError(
-            "GEMINI_API_KEY environment variable is not set. "
-            "Export it before running: export GEMINI_API_KEY='your_key'"
-        )
-    return genai.Client(api_key=api_key)
-
-
-def _translate_batch_gemini(
-    client,
+def _translate_batch(
+    client: Any,
     model: str,
-    batch_text: str,
+    batch: list[SrtEntry],
     batch_index: int,
     total_batches: int,
     retries: int = 3,
     retry_delay: float = 10.0,
     glossary: dict | None = None,
-    cached_content_name: str | None = None,
     style: str = "academic",
-) -> tuple[str, object]:
-    """Send a single batch of subtitle lines to Gemini. Thread-safe."""
-    from google.genai import types
+    context: list[SrtEntry] | None = None,
+) -> tuple[str, UsageData]:
+    """Send a single batch of subtitle lines to OpenRouter. Thread-safe."""
+    from usage_tracker import check_backoff, signal_backoff, log_failure  # type: ignore
 
-    system_instruction = None
-    if not cached_content_name:
-        # Prepare glossary text
-        current_glossary = glossary or {}
-        glossary_lines = [f"- {k} -> {v}" for k, v in current_glossary.items()]
-        glossary_text = "\n".join(glossary_lines)
-        
-        system_instruction = TRANSLATION_SYSTEM_PROMPT.format(glossary_text=glossary_text)
-        system_instruction += f"\nTranslation Style: {style.upper()} - Use appropriate tone and professional terminology."
-        system_instruction += "\nOutput MUST be a JSON list of objects: [{\"index\": 1, \"text\": \"translation\"}, ...]"
-    
-    import random
-    
+    batch_text = format_batch_for_translation(batch, context=context)
+
+    current_glossary = glossary or {}
+    combined_text = (batch_text + " ".join(e.text for e in (context or []))).lower()
+    filtered_glossary = {k: v for k, v in current_glossary.items() if k.lower() in combined_text}
+
+    glossary_text = "\n".join(f"- {k} -> {v}" for k, v in filtered_glossary.items())
+    system_instruction = TRANSLATION_SYSTEM_PROMPT.format(glossary_text=glossary_text)
+
+    style_desc = STYLE_TEMPLATES.get(style, STYLE_TEMPLATES["academic"])
+    system_instruction += f"\n\nTone guideline: {style_desc}"
+
+    dynamic_max_tokens = min(8192, max(2048, len(batch) * 300))
+
     for attempt in range(1, retries + 1):
         try:
-            from usage_tracker import check_backoff, signal_backoff
-            check_backoff() # Wave 7: Wait if others hit rate limits
-            
-            config_params = {
-                "temperature": 0.1,
-                "max_output_tokens": 4096,
-                "response_mime_type": "application/json",
-            }
-            if system_instruction:
-                config_params["system_instruction"] = system_instruction
-            if cached_content_name:
-                config_params["cached_content"] = cached_content_name
+            check_backoff()
 
-            response = client.models.generate_content(
+            response = client.chat.completions.create(
                 model=model,
-                contents=batch_text,
-                config=types.GenerateContentConfig(**config_params),
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": batch_text},
+                ],
+                temperature=0.1,
+                max_tokens=dynamic_max_tokens,
             )
-            # Stage 2: Reflective QA Loop
-            qa_system_instruction = f"""
-You are a CFA quality control editor. Review the JSON translation for:
-1. Glossary adherence ({glossary_text})
-2. Professional terminology
-3. Phrasing errors
 
-Output corrected JSON in the same format.
-            """
-            
-            qa_response = client.models.generate_content(
-                model=model,
-                contents=response.text,
-                config=types.GenerateContentConfig(
-                    system_instruction=qa_system_instruction,
-                    temperature=0.0, # Strict check
-                    max_output_tokens=4096,
-                    response_mime_type="application/json",
-                ),
+            response_text = response.choices[0].message.content or ""
+            base_usage = UsageData(
+                prompt_token_count=response.usage.prompt_tokens if response.usage else 0,
+                candidates_token_count=response.usage.completion_tokens if response.usage else 0,
             )
-            
-            # Combine usage
-            total_usage = response.usage_metadata
-            if qa_response.usage_metadata:
-                total_usage.prompt_token_count += qa_response.usage_metadata.prompt_token_count
-                total_usage.candidates_token_count += qa_response.usage_metadata.candidates_token_count
-                total_usage.total_token_count += qa_response.usage_metadata.total_token_count
-                
-            return qa_response.text, total_usage
+
+            # QA Loop — best-effort; fall back to base translation on any failure
+            from config import ENABLE_QA_LOOP  # type: ignore
+            if not ENABLE_QA_LOOP:
+                return response_text, base_usage
+
+            try:
+                qa_instr = (
+                    f"You are a CFA quality editor. Ensure terms in "
+                    f"{list(filtered_glossary.keys())} are correct. "
+                    f"Output JSON array with same format."
+                )
+                qa_res = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": qa_instr},
+                        {"role": "user", "content": response_text},
+                    ],
+                    temperature=0.0,
+                    max_tokens=dynamic_max_tokens,
+                )
+                qa_in = qa_res.usage.prompt_tokens if qa_res.usage else 0
+                qa_out = qa_res.usage.completion_tokens if qa_res.usage else 0
+                combined_usage = UsageData(
+                    prompt_token_count=base_usage.prompt_token_count + qa_in,
+                    candidates_token_count=base_usage.candidates_token_count + qa_out,
+                )
+                return qa_res.choices[0].message.content or response_text, combined_usage
+
+            except Exception as qa_err:
+                print(f"  [QA] Failed (using base translation): {qa_err}")
+                return response_text, base_usage
 
         except Exception as e:
             err_str = str(e).lower()
-            # Exponential Backoff with Jitter: base * 2^attempt + random_jitter
-            # Target 429 Too Many Requests / Overloaded
-            is_rate_limit = any(x in err_str for x in ["429", "quota", "resource_exhausted", "limit"])
-            is_overloaded = "503" in err_str or "overloaded" in err_str
-            
-            if is_rate_limit or is_overloaded:
-                base_delay = retry_delay if is_rate_limit else 2.0
-                jitter = random.uniform(0, 1)
-                wait = (base_delay * (2 ** (attempt - 1))) + jitter
-                
-                # Wave 7: Signal global backoff
+            if any(x in err_str for x in ["429", "quota", "overloaded", "503", "rate limit"]):
+                wait = (retry_delay * (2 ** (attempt - 1))) + random.uniform(0, 1)
                 signal_backoff(wait + 2)
-            else:
-                wait = retry_delay
-
-            if attempt < retries:
-                print(f"  [retry {attempt}/{retries}] Batch {batch_index}/{total_batches}: {e} — retrying in {wait:.1f}s")
                 time.sleep(wait)
-            else:
-                from usage_tracker import log_failure
+            elif attempt == retries:
                 log_failure("Translation", f"Batch {batch_index}", str(e))
                 raise
+            else:
+                time.sleep(retry_delay)
+
+    raise RuntimeError(f"Translation failed for batch {batch_index} after {retries} attempts.")
 
 
 def translate_srt_files(
     srt_mapping: dict[Path, Path],
     model: str | None = None,
+    style: str = "academic",
+    dry_run: bool = False,
+    series_context: str | None = None,
 ) -> dict[Path, Path]:
-    """Translate SRT files from original language to Chinese using Gemini API.
-    
-    All translation batches within each file are sent concurrently.
-
-    Args:
-        srt_mapping: {media_path: original_srt_path} from ASR step
-        model: Gemini model name (default: from GEMINI_MODEL env or gemini-2.5-flash)
-
-    Returns:
-        {media_path: chinese_srt_path} for successfully translated files.
-    """
-    gemini_model = model or os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    or_model = str(model or os.environ.get("OPENROUTER_TEXT_MODEL", OPENROUTER_TEXT_MODEL))
 
     print(f"\n{'='*60}")
-    print(f"Translation backend: Google Gemini API ({gemini_model})")
-    print(f"Concurrent batches: {TRANSLATION_MAX_CONCURRENT}")
+    print(f"Translation backend: OpenRouter ({or_model}) {'[DRY RUN]' if dry_run else ''}")
     print(f"{'='*60}")
 
-    client = _get_gemini_client()
-    print("Gemini client initialized.\n")
+    if dry_run:
+        for m_path in srt_mapping:
+            print(f"  [dry-run] Would translate {m_path.name}")
+        return {m: s.parent / f"{m.stem}.zh.srt" for m, s in srt_mapping.items()}
 
+    client = get_openrouter_client()
     results: dict[Path, Path] = {}
-    
-    # Reload glossary once at the start
     current_glossary = load_glossary()
-    
-    # Wave 6: Context Caching Logic
-    from config import TRANSLATION_USE_CACHING
-    cached_content_name = None
-    if TRANSLATION_USE_CACHING and len(current_glossary) > 50:
-        print(f"  [Cache] Large glossary detected ({len(current_glossary)} terms). Creating context cache...")
-        try:
-            from google.genai import types
-            glossary_lines = [f"- {k} -> {v}" for k, v in current_glossary.items()]
-            glossary_text = "\n".join(glossary_lines)
-            cache_instruction = TRANSLATION_SYSTEM_PROMPT.format(glossary_text=glossary_text)
-            
-            # Create a 1-hour cache for this session
-            cache = client.caches.create(
-                model=gemini_model,
-                config=types.CreateCachedContentConfig(
-                    system_instruction=cache_instruction,
-                    ttl="3600s",
-                ),
-            )
-            cached_content_name = cache.name
-            print(f"  [Cache] Created: {cached_content_name}")
-        except Exception as e:
-            print(f"  [Cache] Failed to create cache: {e}. Falling back to standard requests.")
 
     for i, (media_path, srt_path) in enumerate(srt_mapping.items(), 1):
         zh_srt_path = srt_path.parent / f"{media_path.stem}.zh.srt"
-        
-        # --- PHASE 3: Task Recovery (Checkpointing) ---
         if zh_srt_path.exists():
-            print(f"[{i}/{len(srt_mapping)}] [skip] Chinese translation already exists: {zh_srt_path.name}")
+            print(f"[{i}/{len(srt_mapping)}] [skip] zh.srt already exists: {zh_srt_path.name}")
             results[media_path] = zh_srt_path
             continue
 
-        print(f"[{i}/{len(srt_mapping)}] Translating: {srt_path.name}")
-        
-        # --- PHASE 2: AI Auto-Learning Mode ---
-        # Scan the transcript and update the glossary JSON automatically
-        # Note: If catching is used, auto-learning won't update the cache mid-run.
+        # Pre-flight: validate the SRT before calling any API
+        entries = []
+        try:
+            entries = parse_srt(srt_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            from usage_tracker import log_failure  # type: ignore
+            log_failure("Translation", media_path.name, f"Cannot read SRT: {e}")
+            print(f"[{i}/{len(srt_mapping)}] [ERROR] Cannot read SRT: {e}")
+            continue
+        if not entries:
+            from usage_tracker import log_failure  # type: ignore
+            log_failure("Translation", media_path.name, "SRT has 0 entries")
+            print(f"[{i}/{len(srt_mapping)}] [WARN] SRT has 0 entries, skipping.")
+            continue
+
+        # Guard: split any oversized entries before batching (catches garbled ASR output
+        # where the entire transcript was collapsed into a single subtitle block).
+        oversized = [e for e in entries if len(e.text) > _MAX_ENTRY_CHARS]
+        if oversized:
+            repaired: list[SrtEntry] = []
+            for e in entries:
+                if len(e.text) > _MAX_ENTRY_CHARS:
+                    repaired.extend(split_monolithic_entry(e))
+                else:
+                    repaired.append(e)
+            for idx, e in enumerate(repaired, 1):
+                e.index = idx
+            entries = repaired
+            print(f"  [REPAIR] Split {len(oversized)} oversized entries → {len(entries)} total")
+
+        print(f"[{i}/{len(srt_mapping)}] Translating {len(entries)} subtitles -> {zh_srt_path.name}")
+
         try:
             update_glossary_auto(srt_path)
-            if not cached_content_name: # Only reload if not using a fixed cache
-                current_glossary = load_glossary()
-        except Exception as e:
-            print(f"  [Glossary] Auto-update skipped: {e}")
-
-        try:
-            content = srt_path.read_text(encoding="utf-8")
-            entries = parse_srt(content)
-
-            if not entries:
-                print("  [skip] No subtitle entries found")
-                continue
+            current_glossary = load_glossary()
 
             batches = batch_entries(entries, TRANSLATION_BATCH_SIZE)
-            total = len(batches)
-            print(f"  Submitting {total} batches concurrently (max {TRANSLATION_MAX_CONCURRENT} parallel)...")
+            cache_dir = zh_srt_path.parent / "translation_cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
 
-            t0 = time.time()
+            ordered_futures: list[Any] = []
+            total_in = 0
+            total_out = 0
+            translated_entries: list[Any] = []
 
-            # Submit all batches concurrently
-            ordered_futures: list[tuple[int, list[SrtEntry], object]] = []
             with ThreadPoolExecutor(max_workers=TRANSLATION_MAX_CONCURRENT) as executor:
-                for bi, batch in enumerate(batches, 1):
-                    # For context, we take the last 3 lines of the previous batch
-                    context = batches[bi-2][-3:] if bi > 1 else None
-                    
-                    batch_text = format_batch_for_translation(batch, context=context)
-                    future = executor.submit(
-                        _translate_batch_gemini,
-                        client,
-                        gemini_model,
-                        batch_text,
-                        bi,
-                        total,
-                        glossary=current_glossary if not cached_content_name else None,
-                        style=os.environ.get("TRANSLATION_STYLE", "academic")
-                    )
-                    ordered_futures.append((bi, batch, future))
+                for bi, batch in enumerate(batches):
+                    # Batch cache with validation
+                    cache_file = cache_dir / f"batch_{bi}.json"
+                    if cache_file.exists():
+                        try:
+                            cached_text = cache_file.read_text(encoding="utf-8")
+                            test = parse_translation_response(cached_text, batch)
+                            if any(test):
+                                from concurrent.futures import Future
+                                f: Any = Future()
+                                f.set_result((cached_text, None))
+                                ordered_futures.append((bi, batch, f))
+                                continue
+                            else:
+                                print(f"  [Cache] batch_{bi} stale/invalid, re-translating.")
+                                cache_file.unlink()
+                        except Exception:
+                            cache_file.unlink()
 
-                # Collect results
-                translated_entries: list[SrtEntry] = []
-                total_usage = {"input": 0, "output": 0, "total": 0}
-                
+                    context_entries: list[Any] = batches[bi - 1][-3:] if bi > 0 else []  # type: ignore[index]
+                    if bi == 0 and series_context:
+                        context_entries.insert(0, SrtEntry(0, "00:00:00,000", "00:00:00,000", f"[SERIES CONTEXT]: {series_context}"))
+
+                    ordered_futures.append((bi, batch, executor.submit(  # type: ignore[arg-type]
+                        _translate_batch, client, or_model, batch, bi, len(batches),
+                        glossary=current_glossary, style=style, context=context_entries,
+                    )))
+
                 for bi, batch, future in ordered_futures:
-                    raw_result, usage = future.result()
-                    translations = parse_translation_response(raw_result, batch)
-                    
+                    raw_res, usage = future.result()
+                    (cache_dir / f"batch_{bi}.json").write_text(raw_res, encoding="utf-8")
+                    translations = parse_translation_response(raw_res, batch)
                     if usage:
-                        total_usage["input"] += usage.prompt_token_count
-                        total_usage["output"] += usage.candidates_token_count
-                        total_usage["total"] += usage.total_token_count
-
+                        total_in = total_in + int(getattr(usage, "prompt_token_count", 0))  # type: ignore[operator]
+                        total_out = total_out + int(getattr(usage, "candidates_token_count", 0))  # type: ignore[operator]
                     translated_entries.extend([
                         SrtEntry(e.index, e.start, e.end, p_text)
                         for e, p_text in zip(batch, translations)
                     ])
 
-            zh_srt_path = srt_path.parent / f"{media_path.stem}.zh.srt"
+            # Validate: output must be Chinese
+            def _is_chinese(text: str) -> bool:
+                chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+                return len(text) > 0 and chinese_chars > len(text) * 0.1
+
+            sample: list[str] = [e.text for e in list(translated_entries)[:10]]  # type: ignore[attr-defined]
+            chinese_count = sum(1 for t in sample if _is_chinese(t))
+            if chinese_count < max(1, len(sample) // 2):
+                from usage_tracker import log_failure  # type: ignore
+                log_failure("Translation", media_path.name, f"Only {chinese_count}/{len(sample)} entries are Chinese. Sample: {sample[:2]}")
+                print(f"  [ERROR] Translation incomplete ({chinese_count}/{len(sample)} Chinese). Purging cache.")
+                for cf in cache_dir.glob("batch_*.json"):
+                    cf.unlink(missing_ok=True)
+                continue
+
             write_srt(translated_entries, zh_srt_path)
+            log_usage("Translation", media_path.name, total_in, total_out, model=or_model)
+            print(f"  Saved: {zh_srt_path.name}")
             results[media_path] = zh_srt_path
-            
-            elapsed = time.time() - t0
-            print(f"  Saved: {zh_srt_path.name} (total: {elapsed:.1f}s for {len(entries)} entries)")
-            if total_usage["total"] > 0:
-                log_usage("Translation", media_path.name, total_usage["input"], total_usage["output"])
-                print(f"  Token Usage (Translation): Input={total_usage['input']}, Output={total_usage['output']}, Total={total_usage['total']}")
 
         except Exception as e:
-            print(f"  [ERROR] Translation failed for '{srt_path.name}': {e}")
-            continue
+            from usage_tracker import log_failure  # type: ignore
+            log_failure("Translation", media_path.name, str(e))
+            print(f"  [ERROR] Translation failed for {media_path.name}: {e}")
 
     return results
+
+
+def translate_one_video(raw_srt_text: str, visual_context_summary: Optional[str], style: str, working_directory: str) -> Dict[str, Any]:
+    """Single-video translation wrapper for the Multi-Agent Director."""
+    w_d = Path(working_directory)
+
+    entries = parse_srt(raw_srt_text)
+
+    client = get_openrouter_client()
+    or_model = str(os.environ.get("OPENROUTER_TEXT_MODEL", OPENROUTER_TEXT_MODEL))
+
+    batches = batch_entries(entries, batch_size=TRANSLATION_BATCH_SIZE)
+
+    translated_entries: list[str] = []
+    total_in = 0
+    total_out = 0
+
+    current_glossary = load_glossary()
+
+    for i, batch in enumerate(batches):
+        context_entries = batches[i - 1][-3:] if i > 0 else []
+        if i == 0 and visual_context_summary:
+            context_entries.insert(0, SrtEntry(0, "00:00:00,000", "00:00:00,000", f"[SERIES CONTEXT]: {visual_context_summary}"))
+
+        res_text, usage = _translate_batch(
+            client, or_model, batch, i, len(batches),
+            glossary=current_glossary, style=style, context=context_entries,
+        )
+        translated_entries.extend(parse_translation_response(res_text, batch))
+        if usage:
+            total_in = total_in + int(getattr(usage, "prompt_token_count", 0))  # type: ignore[operator]
+            total_out = total_out + int(getattr(usage, "candidates_token_count", 0))  # type: ignore[operator]
+
+    log_usage("Translation", w_d.name, total_in, total_out, model=or_model)
+
+    zh_srt_p = w_d / f"{w_d.name}.zh.srt"
+    final_zh = [SrtEntry(e.index, e.start, e.end, txt) for e, txt in zip(entries, translated_entries)]
+    write_srt(final_zh, zh_srt_p)
+
+    return {
+        "zh_srt_text": zh_srt_p.read_text(encoding="utf-8"),
+        "zh_srt_path": str(zh_srt_p),
+    }

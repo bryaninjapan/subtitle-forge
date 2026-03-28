@@ -1,0 +1,175 @@
+{
+  "workflow": {
+    "name": "subtitle_forge_multi_agent_pipeline",
+    "version": "1.0",
+    "description": "A Multi-Agent Orchestration Blueprint for Subtitle Forge"
+  },
+  "global_context": {
+    "required_inputs": [
+      "video_path"
+    ],
+    "optional_inputs": [
+      "language",
+      "style"
+    ]
+  },
+  "agents": [
+    {
+      "id": "preflight_agent",
+      "role": "Environment preparation and pre-flight checks",
+      "action": "extract_audio_and_validate",
+      "inputs": [
+        "video_path",
+        "working_directory"
+      ],
+      "outputs": [
+        "audio_16khz_path",
+        "working_directory"
+      ],
+      "dependencies": [],
+      "retry_policy": {
+        "max_retries": 1,
+        "delay_seconds": 5
+      }
+    },
+    {
+      "id": "vision_agent",
+      "role": "Extract visual context and keyframes from video",
+      "action": "extract_keyframes",
+      "inputs": [
+        "video_path",
+        "working_directory"
+      ],
+      "outputs": [
+        "frame_paths",
+        "visual_context_summary"
+      ],
+      "dependencies": [
+        "preflight_agent"
+      ],
+      "retry_policy": {
+        "max_retries": 2,
+        "delay_seconds": 10
+      }
+    },
+    {
+      "id": "asr_agent",
+      "role": "Speech-to-text transcription using Gemini Flex",
+      "action": "transcribe_audio",
+      "inputs": [
+        "audio_16khz_path",
+        "language",
+        "working_directory"
+      ],
+      "outputs": [
+        "raw_srt_text",
+        "transcript_text"
+      ],
+      "dependencies": [
+        "preflight_agent"
+      ],
+      "retry_policy": {
+        "max_retries": 3,
+        "backoff_multiplier": 2.0,
+        "base_delay_seconds": 10
+      }
+    },
+    {
+      "id": "translation_agent",
+      "role": "Context-aware translation using specific styles and guidelines",
+      "action": "translate_srt",
+      "inputs": [
+        "raw_srt_text",
+        "visual_context_summary",
+        "style",
+        "working_directory"
+      ],
+      "outputs": [
+        "zh_srt_text"
+      ],
+      "dependencies": [
+        "asr_agent",
+        "vision_agent"
+      ],
+      "retry_policy": {
+        "max_retries": 3,
+        "backoff_multiplier": 2.0,
+        "base_delay_seconds": 10
+      }
+    },
+    {
+      "id": "bilingual_agent",
+      "role": "Merge source and translated SRTs into a bilingual subtitle",
+      "action": "create_bilingual_srt",
+      "inputs": [
+        "raw_srt_text",
+        "zh_srt_text",
+        "working_directory"
+      ],
+      "outputs": [
+        "bilingual_srt_text"
+      ],
+      "dependencies": [
+        "translation_agent"
+      ]
+    },
+    {
+      "id": "study_notes_agent",
+      "role": "Synthesize transcript and visual context into comprehensive study notes",
+      "action": "generate_study_notes",
+      "inputs": [
+        "transcript_text",
+        "frame_paths",
+        "working_directory"
+      ],
+      "outputs": [
+        "study_notes_md"
+      ],
+      "dependencies": [
+        "asr_agent",
+        "vision_agent"
+      ],
+      "retry_policy": {
+        "max_retries": 2,
+        "delay_seconds": 15
+      }
+    },
+    {
+      "id": "chapter_agent",
+      "role": "Generate YouTube-style chapter timestamps based on logical topic shifts",
+      "action": "generate_video_chapters",
+      "inputs": [
+        "transcript_text",
+        "working_directory"
+      ],
+      "outputs": [
+        "chapter_text"
+      ],
+      "dependencies": [
+        "asr_agent"
+      ]
+    },
+    {
+      "id": "qa_judge_agent",
+      "role": "Evaluate translation quality via LLM-as-a-judge",
+      "action": "score_translation",
+      "inputs": [
+        "raw_srt_text",
+        "zh_srt_text"
+      ],
+      "outputs": [
+        "qa_score",
+        "qa_critique"
+      ],
+      "dependencies": [
+        "translation_agent"
+      ],
+      "run_condition": "settings.use_qa_scoring == true"
+    }
+  ],
+  "engine_rules": {
+    "execution_mode": "concurrent_dag",
+    "on_failure": "halt_branch_and_trigger_recover_py",
+    "state_persistence": "write_to_working_directory"
+  }
+}

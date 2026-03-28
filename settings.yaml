@@ -1,0 +1,39 @@
+# Subtitle Forge - Global Settings
+
+api:
+  model: "gemini-2.5-flash"
+  lite_model: "gemini-2.5-flash"
+  pro_model: "gemini-2.5-flash"
+
+openrouter:
+  text_model: "qwen/qwen-2.5-72b-instruct"
+  
+pipeline:
+  asr_concurrent: 2
+  post_proc_concurrent: 4
+  translation_batch_size: 50
+  use_qa_loop: true
+  use_qa_scoring: false
+  use_context_caching: true
+  max_cost_usd: 20.0      # Stop if total cost reaches this limit
+  burn_subtitles: true  # Auto-burn hard subtitles into video
+  
+glossary:
+  max_asr_terms: 50
+  hit_threshold: 5
+  prune_after_runs: 50
+  difficulty_level: "L1" # L1, L2, L3
+  
+output:
+  bilingual: true
+  webvtt: true
+  validation: true
+  study_notes: true
+  chapters: true
+  slide_pdf: true        # Extract keyframes to PDF slide deck
+  structured_json: true  # Output study_data.json for Quiz Apps
+  
+# Costs per 1 million tokens (USD)
+costs:
+  flash: [0.10, 0.40]
+  lite: [0.04, 0.16]

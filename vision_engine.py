@@ -1,4 +1,5 @@
 import subprocess
+import os # Just in case
 from pathlib import Path
 
 def extract_keyframes(video_path: Path, output_dir: Path, interval_min: int = 5):
@@ -8,6 +9,7 @@ def extract_keyframes(video_path: Path, output_dir: Path, interval_min: int = 5)
     """
     from config import MAX_FRAMES_PER_VIDEO
     import math
+    from media_utils import get_media_duration_sec
 
     frames_dir = output_dir / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
@@ -19,7 +21,7 @@ def extract_keyframes(video_path: Path, output_dir: Path, interval_min: int = 5)
         return existing_frames
     
     # Scene Change Detection Logic
-    duration = _get_media_duration_sec(video_path)
+    duration = get_media_duration_sec(video_path)
     print(f"  [Vision] Detecting scene changes for '{video_path.name}'...")
     
     # We use a combined approach: 
@@ -31,7 +33,7 @@ def extract_keyframes(video_path: Path, output_dir: Path, interval_min: int = 5)
     
     cmd = [
         "ffmpeg", "-i", str(video_path),
-        "-vf", f"select='gt(scene,{scene_threshold})',scale=1280:-1",
+        "-vf", f"select='gt(scene,{scene_threshold})',scale=1024:-1",
         "-vsync", "vfr",
         "-q:v", "2",
         str(frames_dir / "frame_%03d.jpg")
@@ -63,33 +65,16 @@ def extract_keyframes(video_path: Path, output_dir: Path, interval_min: int = 5)
         
         fallback_cmd = [
             "ffmpeg", "-i", str(video_path),
-            "-vf", f"fps=1/({interval_min}*60),scale=1280:-1",
+            "-vf", f"fps=1/({interval_min}*60),scale=1024:-1",
             "-q:v", "2",
             str(frames_dir / "frame_%03d.jpg")
         ]
         subprocess.run(fallback_cmd, capture_output=True)
         return sorted(list(frames_dir.glob("*.jpg")))
-    except subprocess.CalledProcessError as e:
-        print(f"  [Vision] Frame extraction failed: {e.stderr.decode()}")
+    except Exception as e:
+        print(f"  [Vision] Frame extraction failed: {e}")
         return []
 
 
-def _get_media_duration_sec(path: Path) -> float:
-    """Helper to get duration for adaptive sampling."""
-    try:
-        import subprocess
-        out = subprocess.run(
-            [
-                "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1", str(path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            return float(out.stdout.strip())
-    except Exception:
-        pass
-    return 0.0
+# media_utils.get_media_duration_sec is imported at the top of extract_keyframes
 

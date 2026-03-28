@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import os
+import sys
 import subprocess
 import time
+import json
 from pathlib import Path
-from usage_tracker import log_usage
+from typing import Optional, Dict, Any, List, Tuple
+from usage_tracker import log_usage  # type: ignore
+from media_utils import get_media_duration_sec  # type: ignore
+from gemini_client import get_gemini_client  # type: ignore
 
 from config import (
     AUDIO_SAMPLE_RATE,
@@ -15,37 +20,19 @@ from config import (
     OUTPUT_DIR,
     VIDEO_EXTENSIONS,
     AUDIO_EXTENSIONS,
-)
-
+)  # type: ignore
 
 # ─────────────────────────── Shared utilities ────────────────────────────────
 
 def is_media_file(path: Path) -> bool:
     return path.suffix.lower() in VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 
-
-def _get_media_duration_sec(path: Path) -> float:
-    """Return duration in seconds via ffprobe; 0 if unavailable."""
-    try:
-        out = subprocess.run(
-            [
-                "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1", str(path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            return float(out.stdout.strip())
-    except (subprocess.TimeoutExpired, ValueError, FileNotFoundError):
-        pass
-    return 0.0
-
+def _get_gemini_client():
+    return get_gemini_client()
 
 def check_dependencies() -> None:
     """Ensure ffmpeg and ffprobe are installed and available."""
-    from config import FFMPEG_BIN
+    from config import FFMPEG_BIN  # type: ignore
     for tool in [FFMPEG_BIN, "ffprobe"]:
         try:
             subprocess.run([tool, "-version"], capture_output=True, check=True)
@@ -56,26 +43,19 @@ def check_dependencies() -> None:
             sys.exit(1)
     print("  [Init] Dependencies check passed: ffmpeg/ffprobe found.")
 
-
 def extract_audio(video_path: Path, output_dir: Path) -> Path:
     """Extract full audio from video to 16kHz mono WAV."""
     audio_path = output_dir / f"{video_path.stem}.wav"
     if audio_path.exists():
-        dur = _get_media_duration_sec(audio_path)
+        dur = get_media_duration_sec(audio_path)
         if dur > 0:
             print(f"  [skip] Audio already extracted: {audio_path.name} ({dur / 60:.1f} min)")
-        else:
-            print(f"  [skip] Audio already extracted: {audio_path.name}")
         return audio_path
 
-    # Advanced Audio Filtering:
-    # 1. afftdn: FFT-based denoiser to reduce background hiss/noise
-    # 2. loudnorm: EBU R128 loudness normalization
-    # 3. aresample: Ensure 16kHz mono
     cmd = [
         FFMPEG_BIN, "-i", str(video_path),
         "-vn",
-        "-af", f"afftdn,loudnorm=I=-16:TP=-1.5:LRA=11,aresample={AUDIO_SAMPLE_RATE}",
+        "-af", f"loudnorm=I=-16:TP=-1.5:LRA=11,aresample={AUDIO_SAMPLE_RATE}",
         "-ac", "1",
         "-acodec", "pcm_s16le",
         "-y",
@@ -84,7 +64,6 @@ def extract_audio(video_path: Path, output_dir: Path) -> Path:
     print(f"  Extracting & Denoising audio: {video_path.name} -> {audio_path.name}")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        # Fallback to simple extraction if filters fail (older ffmpeg etc)
         cmd_fallback = [
             FFMPEG_BIN, "-i", str(video_path),
             "-vn", "-acodec", "pcm_s16le",
@@ -93,59 +72,54 @@ def extract_audio(video_path: Path, output_dir: Path) -> Path:
         result = subprocess.run(cmd_fallback, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"ffmpeg failed:\n{result.stderr}")
-    dur = _get_media_duration_sec(audio_path)
-    if dur > 0:
-        print(f"  Extracted duration: {dur / 60:.1f} min")
     
-    # Check if file size is reasonable (not 0 bytes)
     if audio_path.stat().st_size < 1000:
-        raise RuntimeError(f"Extracted audio file is too small ({audio_path.stat().st_size} bytes). Ffmpeg might have failed silently.")
-        
+        raise RuntimeError(f"Extracted audio is too small. Ffmpeg might have failed.")
     return audio_path
 
-def check_silence(audio_path: Path, threshold_db: int = -40, min_duration: float = 0.9) -> bool:
-    """Check if the audio file is mostly silent using FFmpeg's silencedetect."""
-    from config import FFMPEG_BIN
-    duration = _get_media_duration_sec(audio_path)
+def check_silence(audio_path: Path, threshold_db: int = -40) -> bool:
+    """Check if the audio file is mostly silent."""
+    from config import FFMPEG_BIN  # type: ignore
+    duration = get_media_duration_sec(audio_path)
     if duration <= 0: return True
-        
     cmd = [FFMPEG_BIN, "-i", str(audio_path), "-af", f"silencedetect=n={threshold_db}dB:d=2", "-f", "null", "-"]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    
     import re
     silence_durations = re.findall(r"silence_duration: ([\d\.]+)", result.stderr)
     total_silence = sum(float(d) for d in silence_durations)
-    is_silent = (total_silence / duration) > 0.95
-    if is_silent:
-        print(f"  [Efficiency] Detected high silence ratio ({total_silence:.1f}s / {duration:.1f}s). Skipping API.")
-    return is_silent
-
+    return (total_silence / duration) > 0.95
 
 # ─────────────────────────── Gemini ASR ─────────────────────────────────────
 
 _GEMINI_ASR_SYSTEM_PROMPT = """\
 You are a professional transcription service. Transcribe the audio file provided.
+Output ONLY a valid SRT subtitle file. Follow this EXACT format:
 
-Output ONLY a valid SRT subtitle file. Rules:
-- Each entry must have: index number, timestamp (HH:MM:SS,mmm --> HH:MM:SS,mmm), and text.
-- Timestamps must be accurate to the audio.
-- Each subtitle should be 1-2 sentences, roughly 5-10 seconds long.
+1
+00:00:01,000 --> 00:00:05,500
+First subtitle text here.
+
+2
+00:00:06,000 --> 00:00:11,200
+Second subtitle text here.
+
+STRICT FORMAT RULES:
+- Index number and timestamp MUST be on SEPARATE lines. Never on the same line.
+- Timestamp format is EXACTLY: HH:MM:SS,mmm --> HH:MM:SS,mmm
+  - HH = 2-digit hours (always include, use 00 if less than 1 hour)
+  - MM = 2-digit minutes
+  - SS = 2-digit seconds
+  - mmm = 3-digit milliseconds
+  - Separator before milliseconds is a COMMA (,) NOT a colon (:)
+  - CORRECT: 00:01:23,456 --> 00:01:27,890
+  - WRONG:   00:01:23:456  (colon before ms)
+  - WRONG:   1 00:01:23,456 (index on same line as timestamp)
+- Each subtitle: 1-2 sentences, roughly 5-10 seconds.
 - Do NOT include any explanation, preamble, or code fences.
 - Do NOT translate — output the original language only.
 - Preserve proper nouns, abbreviations, and technical terms exactly as spoken.
-
-Example format:
-1
-00:00:00,000 --> 00:00:05,200
-Hello, this is the first subtitle.
-
-2
-00:00:05,500 --> 00:00:10,800
-And this is the second one.
+- Speaker Diarization: If multiple speakers are detected, prefix lines with [Speaker A], [Speaker B], etc.
 """
-
-
-
 
 def _transcribe_with_gemini(
     media_path: Path,
@@ -153,190 +127,215 @@ def _transcribe_with_gemini(
     model: str = DEFAULT_GEMINI_MODEL,
     retries: int = 3,
     retry_delay: float = 10.0,
-) -> tuple[str, object]:
-    """Upload media file to Gemini and return raw SRT string with retry logic."""
-    from google import genai
-    from google.genai import types
-    from config import MIME_TYPES
+) -> tuple[str, object]:  # type: ignore
+    from google.genai import types  # type: ignore
+    from usage_tracker import signal_backoff  # type: ignore
+    from config import MIME_TYPES, get_truncated_glossary  # type: ignore
 
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY environment variable is not set.")
-
-    client = genai.Client(api_key=api_key)
+    client = _get_gemini_client()
     mime_type = MIME_TYPES.get(media_path.suffix.lower(), "video/mp4")
 
-    # 1. Upload with retry
     uploaded_file = None
-    for attempt in range(1, retries + 1):
-        try:
-            print(f"  Uploading to Gemini (attempt {attempt}): {media_path.name}...")
-            t0 = time.time()
-            uploaded_file = client.files.upload(
-                file=media_path,
-                config={"mime_type": mime_type},
-            )
-            print(f"  Upload successful ({time.time() - t0:.1f}s). Waiting for processing...", end="", flush=True)
-            break
-        except Exception as e:
-            if attempt < retries:
-                print(f"  [retry {attempt}] Upload failed: {e}. Retrying in {retry_delay}s...")
-                time.sleep(retry_delay)
-            else:
-                from usage_tracker import log_failure
-                log_failure("ASR", media_path.name, str(e))
-                raise
-
-    # 2. Wait for ACTIVE state
-    while uploaded_file.state and uploaded_file.state.name == "PROCESSING":
-        time.sleep(5)
-        print(".", end="", flush=True)
-        uploaded_file = client.files.get(name=uploaded_file.name)
-    print(" Done.")
-
-    # 3. Request transcription with retry
-    lang_instruction = ""
-    if language:
-        lang_instruction = f"\nThe audio language is {language}. Transcribe in {language}."
-    
-    # Add glossary context if available
-    from config import load_glossary
-    glossary = load_glossary()
-    glossary_context = ""
-    if glossary:
-        terms = ", ".join(f"{k} ({v})" for k, v in glossary.items())
-        glossary_context = f"\n\nContext & Technical Terms to recognize:\n{terms}"
-        
-    prompt = _GEMINI_ASR_SYSTEM_PROMPT + lang_instruction + glossary_context
-
-    import random
-    for attempt in range(1, retries + 1):
-        try:
-            from usage_tracker import check_backoff, signal_backoff
-            check_backoff() # Wave 7: Wait if others hit rate limits
-            
-            t1 = time.time()
-            response = client.models.generate_content(
-                model=model,
-                contents=[
-                    types.Part.from_uri(
-                        file_uri=uploaded_file.uri,
-                        mime_type=uploaded_file.mime_type,
-                    ),
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=prompt,
-                    temperature=0.0
-                ),
-            )
-            print(f"  Transcription done in {time.time() - t1:.1f}s")
-            
-            # Clean up
+    try:
+        for attempt in range(1, retries + 1):
             try:
-                client.files.delete(name=uploaded_file.name)
-            except Exception:
-                pass
-                
-            return response.text, response.usage_metadata
-        except Exception as e:
-            err_str = str(e).lower()
-            is_rate_limit = any(x in err_str for x in ["429", "quota", "resource_exhausted", "limit"])
-            is_overloaded = "503" in err_str or "overloaded" in err_str
+                print(f"  Uploading to Gemini (attempt {attempt}): {media_path.name}...")
+                uploaded_file = client.files.upload(file=str(media_path), config={"mime_type": mime_type})
+                break
+            except Exception as e:
+                if attempt == retries:
+                    from usage_tracker import log_failure  # type: ignore  # type: ignore
+                    log_failure("ASR Upload", media_path.name, str(e))
+                    raise
+                time.sleep(retry_delay)
+
+        if not uploaded_file:
+            raise RuntimeError("Failed to obtain uploaded_file from Gemini API")
             
-            if is_rate_limit or is_overloaded:
-                base_delay = retry_delay if is_rate_limit else 2.0
-                jitter = random.uniform(0, 1)
-                wait = (base_delay * (2 ** (attempt - 1))) + jitter
-                
-                # Wave 7: Signal others to back off too
-                signal_backoff(wait + 5)
-            else:
-                wait = retry_delay
+        while uploaded_file.state.name == "PROCESSING":  # type: ignore
+            time.sleep(5)
+            uploaded_file = client.files.get(name=uploaded_file.name)  # type: ignore
 
-            if attempt < retries:
-                print(f"  [retry {attempt}] Generation failed: {e}. Retrying in {wait:.1f}s...")
-                time.sleep(wait)
-            else:
-                # Still try to delete if possible
-                try: client.files.delete(name=uploaded_file.name)
-                except: pass
-                raise
+        lang_instr = f"\nThe audio language is {language}. Transcribe in {language}." if language else ""
+        glossary = get_truncated_glossary(50) # Use top 50 terms to keep focus
+        gloss_instr = f"\n\nTechnical context:\n" + ", ".join(f"{k}({v})" for k,v in glossary.items()) if glossary else ""
+        prompt = _GEMINI_ASR_SYSTEM_PROMPT + lang_instr + gloss_instr
 
+        import random
+        for attempt in range(1, retries + 1):
+            try:
+                from usage_tracker import check_backoff, signal_backoff  # type: ignore
+                check_backoff()
+                response = client.models.generate_content(
+                    model=model,
+                    contents=[types.Part.from_uri(file_uri=uploaded_file.uri, mime_type=uploaded_file.mime_type)],  # type: ignore
+                    config=types.GenerateContentConfig(system_instruction=prompt, temperature=0.0),
+                )
+                return response.text, response.usage_metadata
+            except Exception as e:
+                err_str = str(e).lower()
+                if any(x in err_str for x in ["429", "quota", "overloaded", "503"]):
+                    wait = (retry_delay * (2 ** (attempt - 1))) + random.uniform(0, 1)
+                    signal_backoff(wait + 5)
+                    time.sleep(wait)
+                elif attempt == retries:
+                    raise
+        raise RuntimeError("ASR failed after retries")
+    finally:
+        if uploaded_file:
+            try: client.files.delete(name=uploaded_file.name)  # type: ignore
+            except: pass
 
 # ─────────────────────────── Public API ─────────────────────────────────────
 
 def transcribe_files(
     media_files: list[Path],
     language: str | None = None,
+    dry_run: bool = False,
 ) -> dict[Path, Path]:
-    """Transcribe media files using Gemini API.
-
-    Returns: {media_path: srt_path}
-    """
-    from srt_utils import parse_srt
-
-    gemini_model = os.environ.get("GEMINI_ASR_MODEL", DEFAULT_GEMINI_MODEL)
+    from srt_utils import parse_srt, clean_subtitle_text, write_srt  # type: ignore
+    gemini_model = str(os.environ.get("GEMINI_ASR_MODEL", DEFAULT_GEMINI_MODEL))
 
     print(f"\n{'='*60}")
-    print(f"ASR backend: Google Gemini API ({gemini_model})")
+    print(f"ASR backend: Google Gemini API ({gemini_model}) {'[DRY RUN]' if dry_run else ''}")
     print(f"{'='*60}\n")
 
     results: dict[Path, Path] = {}
 
     for i, media_path in enumerate(media_files, 1):
         print(f"[{i}/{len(media_files)}] Processing: {media_path.name}")
-        src_dur = _get_media_duration_sec(media_path)
-        if src_dur > 0:
-            print(f"  Source duration: {src_dur / 60:.1f} min")
-
         out_dir = OUTPUT_DIR / media_path.stem
         out_dir.mkdir(parents=True, exist_ok=True)
-
         srt_path = out_dir / f"{media_path.stem}.srt"
-        txt_path = out_dir / f"{media_path.stem}.txt"
 
         if srt_path.exists():
-            print(f"  [skip] SRT already exists: {srt_path.name}")
+            print(f"  [skip] SRT already exists")
+            results[media_path] = srt_path
+            continue
+
+        if dry_run:
+            print(f"  [dry-run] Would transcribe {media_path.name}")
             results[media_path] = srt_path
             continue
 
         try:
-            # Always extract audio for video files before uploading.
-            # Audio uses ~1,920 tokens/min vs ~17,700 tokens/min for video (~9x savings).
             upload_path = media_path
             if media_path.suffix.lower() in VIDEO_EXTENSIONS:
-                print(f"  [audio-only] Extracting audio to reduce token usage (~9x savings)...")
                 upload_path = extract_audio(media_path, out_dir)
 
-            # Wave 9: Efficiency - Skip silence
-            from config import SILENCE_THRESHOLD
-            if check_silence(upload_path, threshold_db=SILENCE_THRESHOLD):
-                print(f"  [skip] File {media_path.name} is mostly silent.")
+            # Silence cache with stats check
+            stats = f"{upload_path.stat().st_size}_{upload_path.stat().st_mtime}"
+            silence_cache = out_dir / ".silence_cached"
+            if silence_cache.exists() and silence_cache.read_text(encoding="utf-8") == stats:
+                print(f"  [skip] Silence check cached.")
+            else:
+                # The original line was 'from config import SILENCE_THRESHOLD'.
+                # The user's requested change 'from config import SILENCE_THRESHOLD = -50' is a syntax error.
+                # To achieve the apparent intent of setting SILENCE_THRESHOLD to -50,
+                # we define it locally here.
+                SILENCE_THRESHOLD = -50  # dB - raised to avoid false-positive silent detection
+                if check_silence(upload_path, threshold_db=SILENCE_THRESHOLD):
+                    from usage_tracker import log_failure  # type: ignore
+                    log_failure("ASR", media_path.name, "Audio is mostly silent, skipping transcription")
+                    print(f"  [skip] Mostly silent.")
+                    continue
+                silence_cache.write_text(stats, encoding="utf-8")
+
+            raw_srt, usage = _transcribe_with_gemini(upload_path, language, gemini_model)
+            if usage:
+                log_usage("ASR", media_path.name, usage.prompt_token_count, usage.candidates_token_count)  # type: ignore
+
+            if not raw_srt.strip():
+                from usage_tracker import log_failure  # type: ignore
+                log_failure("ASR", media_path.name, "Gemini returned empty transcription")
+                print(f"  [WARNING] Gemini returned EMPTY transcription for {media_path.name}.")
+                (out_dir / f"{media_path.stem}_asr_debug.txt").write_text("[EMPTY RESPONSE]", encoding="utf-8")
                 continue
 
-            raw_srt, usage_meta = _transcribe_with_gemini(upload_path, language, gemini_model)
-
-            if usage_meta:
-                log_usage("ASR", media_path.name, usage_meta.prompt_token_count, usage_meta.candidates_token_count)
-                print(f"  Token Usage (ASR): Input={usage_meta.prompt_token_count}, Output={usage_meta.candidates_token_count}, Total={usage_meta.total_token_count}")
-
-            # Write full SRT file (cleaned)
-            from srt_utils import clean_subtitle_text, write_srt
             entries = parse_srt(raw_srt)
+            if not entries:
+                from usage_tracker import log_failure  # type: ignore
+                debug_p = out_dir / f"{media_path.stem}_asr_debug.txt"
+                debug_p.write_text(raw_srt, encoding="utf-8")
+                log_failure("ASR", media_path.name, f"Could not parse SRT format. First 200 chars: {raw_srt[:200]}")  # type: ignore
+                print(f"  [WARNING] Could not parse SRT format. Raw response saved to {debug_p.name}")
+                txt_path = out_dir / f"{media_path.stem}.transcript.txt"
+                txt_path.write_text(raw_srt, encoding="utf-8")
+                continue
+
+            # Clean ONLY cosmetic noise - preserve speaker tags
             for e in entries:
                 e.text = clean_subtitle_text(e.text)
-            
+            # Remove any entries that ended up empty after cleaning
+            entries = [e for e in entries if e.text]
+            if not entries:
+                from usage_tracker import log_failure  # type: ignore
+                log_failure("ASR", media_path.name, "All subtitle entries were empty after cleaning")
+                print(f"  [ERROR] All entries were empty after cleaning for {media_path.name}")
+                continue
+
+            # Sanity-check: flag suspiciously low entry density (e.g. whole transcript
+            # in one block).  Minimum 1 entry per 2 minutes for any video > 5 min.
+            duration_sec = get_media_duration_sec(upload_path)
+            if duration_sec > 300:
+                min_expected = max(5, int(duration_sec / 120))
+                if len(entries) < min_expected:
+                    from usage_tracker import log_failure  # type: ignore
+                    log_failure("ASR", media_path.name,
+                                f"Suspicious output: {len(entries)} entries for "
+                                f"{duration_sec/60:.1f}min audio (expected ≥{min_expected}). "
+                                "Gemini may have returned garbled SRT format.")
+                    print(f"  [WARNING] Only {len(entries)} entries for "
+                          f"{duration_sec/60:.1f}min audio — ASR output may be garbled.")
+
             write_srt(entries, srt_path)
-            print(f"  Saved: {srt_path.name}")
-
-            # Also write plain TXT
-            plain_text = " ".join(e.text for e in entries)
-            txt_path.write_text(plain_text + "\n", encoding="utf-8")
-            print(f"  Saved: {txt_path.name}")
-
+            txt_path = out_dir / f"{media_path.stem}.transcript.txt"
+            txt_path.write_text(" ".join(e.text for e in entries) + "\n", encoding="utf-8")
+            
+            # Clean up extracted audio
+            if upload_path != media_path and upload_path.exists():
+                try: upload_path.unlink()
+                except: pass
+                
             results[media_path] = srt_path
-
+            print(f"  Saved: {srt_path.name} ({len(entries)} entries)")
         except Exception as e:
-            print(f"  [ERROR] Failed: {e}")
+            from usage_tracker import log_failure  # type: ignore
+            log_failure("ASR Pipeline", media_path.name, str(e))
+            print(f"  [ERROR] {e}")
 
     return results
+
+def transcribe_one_video(audio_16khz_path: str, language: Optional[str], working_directory: str) -> Dict[str, Any]:
+    """Single-video ASR wrapper for the Multi-Agent Director."""
+    from pathlib import Path
+    a_p = Path(audio_16khz_path)
+    w_d = Path(working_directory)
+    
+    # 1. Transcribe with AI (Gemini Flash)
+    raw_srt, usage = _transcribe_with_gemini(a_p, language)
+    
+    # 2. Log usage if available
+    if usage:
+        from usage_tracker import log_usage # type: ignore
+        log_usage("ASR", a_p.name, usage.prompt_token_count, usage.candidates_token_count)
+    
+    # 3. Clean and save result
+    from srt_utils import parse_srt, clean_subtitle_text, write_srt # type: ignore
+    entries = parse_srt(raw_srt)
+    for e in entries:
+        e.text = clean_subtitle_text(e.text)
+        
+    srt_p = w_d / f"{a_p.stem.replace('_16k', '')}.srt"
+    write_srt(entries, srt_p)
+    
+    # 4. Save transcript preview
+    txt_p = w_d / f"{srt_p.stem}.transcript.txt"
+    txt_p.write_text(" ".join(e.text for e in entries) + "\n", encoding="utf-8")
+    
+    return {
+        "raw_srt_text": raw_srt,
+        "transcript_text": txt_p.read_text(encoding="utf-8"),
+        "srt_path": str(srt_p)
+    }
+

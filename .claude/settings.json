@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show:*)",
+      "Bash(python3 -c \"from google.genai import types; import inspect; print\\(inspect.getsource\\(types.GenerateContentResponseUsageMetadata\\)\\)\")",
+      "Bash(python3 -c \"from google.genai._common import BaseModel; import inspect; print\\(inspect.getsource\\(BaseModel\\)\\)\")",
+      "Bash(cat /Users/bryan/main/subtitle-forge/output/2026-l1-intro-video/2026-l1-intro-video.zh.srt echo ---bilingual--- ls /Users/bryan/main/subtitle-forge/output/2026-l1-intro-video/bilingual*)"
+    ]
+  }
+}

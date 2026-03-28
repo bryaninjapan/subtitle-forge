@@ -1,27 +1,18 @@
 import os
-import re
 from pathlib import Path
-from google import genai
-from google.genai import types
-from srt_utils import parse_srt
+from openrouter_client import get_openrouter_client  # type: ignore
+from config import OPENROUTER_TEXT_MODEL  # type: ignore
 
-def generate_video_chapters(media_path: Path, transcript_path: Path):
+def generate_video_chapters(working_dir: Path, video_name: str, transcript_text: str):
     """Analyze transcript to identify topic shifts (LOS) and generate chapters."""
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        return
-        
-    from config import DEFAULT_GEMINI_MODEL, OUTPUT_DIR
-    client = genai.Client(api_key=api_key)
-    model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    client = get_openrouter_client()
+    model = os.environ.get("OPENROUTER_TEXT_MODEL", OPENROUTER_TEXT_MODEL)
 
-    print(f"  [Chapters] Identifying logical chapters for '{media_path.name}'...")
-    
+    print(f"  [Chapters] Identifying logical chapters for '{video_name}'...")
+
     try:
-        transcript = transcript_path.read_text(encoding="utf-8")
-        # Truncate if too long (standard 150k chars)
-        truncated = transcript[:150000]
-        
+        truncated = transcript_text[0:120000]  # type: ignore[misc]
+
         system_instruction = """
 You are a CFA academic editor. Analyze the provided transcript to identify logical topic shifts, specifically focusing on CFA Learning Outcome Statements (LOS A, LOS B, etc.) and major technical concepts.
 
@@ -33,26 +24,27 @@ Example:
 00:45:10 Conclusion & EOCQ
 
 Rules:
-- 100% strictly Traditional Chinese (Taiwan).
+- 100% strictly Simplified Chinese.
 - At least 3 chapters, maximum 10.
 - Output ONLY the list of chapters.
 """
-        
-        response = client.models.generate_content(
+
+        response = client.chat.completions.create(
             model=model,
-            contents=[f"### Transcript ###\n{truncated}"],
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.0
-            )
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": f"### Transcript ###\n{truncated}"},
+            ],
+            temperature=0.0,
         )
-        
-        chapters_text = response.text.strip()
-        chapters_path = OUTPUT_DIR / media_path.stem / f"{media_path.stem}_Chapters.txt"
+
+        chapters_text = (response.choices[0].message.content or "").strip()
+        stem = Path(video_name).stem
+        chapters_path = working_dir / f"{stem}.chapter.txt"
         chapters_path.write_text(chapters_text, encoding="utf-8")
         print(f"  [Chapters] Saved: {chapters_path.name}")
-        return chapters_path
-        
+        return chapters_text
+
     except Exception as e:
         print(f"  [Chapters] Failed to generate chapters: {e}")
-        return None
+        raise e

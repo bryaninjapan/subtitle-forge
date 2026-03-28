@@ -1,111 +1,99 @@
 import json
 import time
 import threading
+import sys
 from pathlib import Path
-from config import BASE_DIR
+from config import (  # type: ignore
+    BASE_DIR, 
+    COST_INPUT_FLASH, COST_OUTPUT_FLASH,
+    COST_INPUT_LITE, COST_OUTPUT_LITE
+)
 
-USAGE_LOG_PATH = BASE_DIR / "usage_log.json"
+USAGE_LOG_PATH = BASE_DIR / "usage_log.jsonl"
 USAGE_MD_PATH = BASE_DIR / "pipeline_report.md"
 FAILURE_MD_PATH = BASE_DIR / "pipeline_failures.md"
 
 _log_lock = threading.Lock()
-
-# Wave 7: Adaptive Concurrency Scaling State
-# When any thread hits a 429, it sets this 'backoff_signal'
-# All other threads check this before starting new API calls
 _backoff_until = 0.0
 _backoff_lock = threading.Lock()
 
 def signal_backoff(seconds: float = 30.0):
-    """Signal all threads to back off for a period."""
     global _backoff_until
     with _backoff_lock:
-        new_target = time.time() + seconds
-        if new_target > _backoff_until:
-            _backoff_until = new_target
-            print(f"\n⚠️  [Adaptive Scaling] Rate limit detected. Throttling all workers for {seconds:.0f}s...")
+        target = time.time() + seconds
+        if target > _backoff_until:
+            _backoff_until = target
+            print(f"\n⚠️  [Backoff] Throttling for {seconds:.0f}s...")
 
 def check_backoff():
-    """Check if we are in a backoff period. If so, block until it's over."""
     global _backoff_until
     while True:
-        wait_time = _backoff_until - time.time()
-        if wait_time <= 0:
-            break
-        time.sleep(min(wait_time, 2.0))
+        wait = _backoff_until - time.time()
+        if wait <= 0: break
+        time.sleep(min(wait, 2.0))
 
-def log_usage(category: str, detail: str, input_tokens: int, output_tokens: int):
-    """Log token usage to JSON and a Markdown report."""
+def check_cost_cap():
+    """Verify if total cost exceeds settings.yaml max_cost_usd."""
+    from config import MAX_COST_USD  # type: ignore
+    if MAX_COST_USD <= 0: return
+    usage = get_total_usage()
+    if usage.get("cost", 0.0) >= MAX_COST_USD:
+        print(f"\n🛑 [STOP] Cost Cap Reached: ${usage['cost']:.4f} >= ${MAX_COST_USD:.4f}")
+        sys.exit(0)
+
+def estimate_cost(duration_min: float, model: str = "gemini-2.5-flash") -> float:
+    if "flash-8b" in model:
+        in_c, out_c = COST_INPUT_LITE, COST_OUTPUT_LITE
+    else:
+        in_c, out_c = COST_INPUT_FLASH, COST_OUTPUT_FLASH
+    return (duration_min * 1920 / 1e6 * in_c) + (duration_min * 1800 / 1e6 * (in_c + out_c))
+
+def log_usage(category: str, detail: str, input_tokens: int, output_tokens: int, model: str = "gemini-2.5-flash"):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    total_tokens = input_tokens + output_tokens
-    cost = (input_tokens * 0.000000075) + (output_tokens * 0.0000003)
-    
+    if ":free" in model:
+        cost = 0.0
+    elif "flash-8b" in model:
+        in_c, out_c = COST_INPUT_LITE, COST_OUTPUT_LITE
+        cost = (input_tokens * (in_c / 1e6)) + (output_tokens * (out_c / 1e6))
+    else:
+        in_c, out_c = COST_INPUT_FLASH, COST_OUTPUT_FLASH
+        cost = (input_tokens * (in_c / 1e6)) + (output_tokens * (out_c / 1e6))
     usage = {
-        "timestamp": timestamp,
-        "category": category, # e.g., "ASR", "Translation", "Notes"
-        "detail": detail,    # e.g., filename
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
-        "estimated_cost_usd": cost
+        "timestamp": timestamp, "category": category, "detail": detail,
+        "input": input_tokens, "output": output_tokens, "model": model, "cost": cost
     }
     
-    # 1. Update JSON (for internal tracking if needed)
     with _log_lock:
-        data = []
-        if USAGE_LOG_PATH.exists():
-            try:
-                data = json.loads(USAGE_LOG_PATH.read_text(encoding="utf-8"))
-            except:
-                data = []
-        data.append(usage)
-        USAGE_LOG_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        with open(USAGE_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(usage, ensure_ascii=False) + "\n")
 
-        # 2. Update Markdown Report (User facing)
-        header = (
-            "# Subtitle Forge - Pipeline Usage Report\n\n"
-            "| Time | Category | Activity Detail | Input | Output | Total | Est. Cost |\n"
-            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n"
-        )
-        existing = USAGE_MD_PATH.read_text(encoding="utf-8") if USAGE_MD_PATH.exists() else ""
-        if "| Time |" not in existing:
-            existing = header
-        row = f"| {timestamp} | **{category}** | {detail} | {input_tokens:,} | {output_tokens:,} | {total_tokens:,} | ${cost:.4f} |\n"
-        USAGE_MD_PATH.write_text(existing + row, encoding="utf-8")
+        if not USAGE_MD_PATH.exists():
+            header = "# Pipeline Report\n\n| Time | Cat | Detail | In | Out | Model | Cost |\n|:---|:---|:---|:---|:---|:---|:---|\n"
+            USAGE_MD_PATH.write_text(header, encoding="utf-8")
+        
+        row = f"| {timestamp} | {category} | {detail} | {input_tokens:,} | {output_tokens:,} | {model} | ${cost:.4f} |\n"
+        with open(USAGE_MD_PATH, "a", encoding="utf-8") as f: f.write(row)
+    
+    # Check cap after each log
+    check_cost_cap()
 
 def get_total_usage():
-    """Summary of all usage from JSON."""
-    if not USAGE_LOG_PATH.exists():
-        return {}
-    
-    try:
-        data = json.loads(USAGE_LOG_PATH.read_text(encoding="utf-8"))
-    except:
-        return {}
-        
-    totals = {
-        "input": sum(u["input_tokens"] for u in data),
-        "output": sum(u["output_tokens"] for u in data),
-        "total": sum(u["total_tokens"] for u in data),
-        "cost": sum(u["estimated_cost_usd"] for u in data)
+    if not USAGE_LOG_PATH.exists(): return {"cost": 0.0, "input": 0, "output": 0}
+    data = []
+    with open(USAGE_LOG_PATH, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip(): data.append(json.loads(line))
+    return {
+        "input": sum(u.get("input", 0) for u in data),
+        "output": sum(u.get("output", 0) for u in data),
+        "cost": sum(u.get("cost", 0.0) for u in data)
     }
-    return totals
+
 def log_failure(stage: str, context: str, error: str):
-    """Log a pipeline failure to a Markdown file in a thread-safe manner."""
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    header = (
-        "# Subtitle Forge - Pipeline Failure Report\n\n"
-        "| Time | Stage | Context | Error Message |\n"
-        "| :--- | :--- | :--- | :--- |\n"
-    )
     with _log_lock:
-        existing = FAILURE_MD_PATH.read_text(encoding="utf-8") if FAILURE_MD_PATH.exists() else ""
-        if "| Time |" not in existing:
-            existing = header
-        
-        # Escape pipe characters for markdown table
-        error_clean = error.replace("|", "\\|").replace("\n", " ")
-        row = f"| {timestamp} | **{stage}** | {context} | {error_clean} |\n"
-        FAILURE_MD_PATH.write_text(existing + row, encoding="utf-8")
-    
-    print(f"  [Error] Logged to {FAILURE_MD_PATH.name}")
+        if not FAILURE_MD_PATH.exists():
+            FAILURE_MD_PATH.write_text("# Failure Report\n\n| Time | Stage | Context | Error |\n|:---|:---|:---|:---|\n", encoding="utf-8")
+        err_c = error.replace("|", "\\|").replace("\n", " ")
+        with open(FAILURE_MD_PATH, "a", encoding="utf-8") as f:
+            f.write(f"| {timestamp} | {stage} | {context} | {err_c} |\n")
