@@ -6,7 +6,7 @@ api:
   pro_model: "gemini-2.5-flash"
 
 openrouter:
-  text_model: "qwen/qwen-2.5-72b-instruct"
+  text_model: "deepseek/deepseek-chat-v3-0324"
   
 pipeline:
   asr_concurrent: 2

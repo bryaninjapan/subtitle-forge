@@ -29,6 +29,34 @@ from asr_engine import is_media_file # type: ignore
 
 console = Console()
 
+# Maximum number of times a transiently-failed agent is allowed to be retried
+# across separate pipeline runs.  After this many failures the agent is moved to
+# FAILED_MAX_RETRIES, which is treated identically to FAILED_PERMANENT (never
+# retried automatically).  A human / agent review is then required to decide
+# whether to fix the input, adjust parameters, or skip the video.
+MAX_CROSS_SESSION_RETRIES = 3
+
+# Errors that will never succeed on retry regardless of how many times we try.
+# These are caused by the *content* of the input (too large, invalid format),
+# not by transient infrastructure issues.
+_PERMANENT_ERROR_SIGNALS = (
+    "400",
+    "invalid_argument",
+    "bad request",
+    "context_length_exceeded",
+    "maximum context length",
+    "payload too large",
+    "request too large",
+    "tokens_limit_reached",
+    "string too long",
+)
+
+def _is_permanent_error(error: str) -> bool:
+    """Return True when the error is definitively non-retriable (bad payload / token limit)."""
+    err = error.lower()
+    return any(sig in err for sig in _PERMANENT_ERROR_SIGNALS)
+
+
 @dataclass
 class AgentConfig:
     id: str
@@ -158,6 +186,19 @@ class WorkflowEngine:
                 state.set_agent_status("translation_agent", "COMPLETED")
             if not state.get_output("zh_srt_text"):
                 state.update_outputs({"zh_srt_text": zh_srt_p.read_text(encoding="utf-8")})
+        else:
+            # If translation was permanently failed BUT the SRT was since repaired
+            # (recover.py creates a .srt.bak), reset so it can be retried.
+            bak_p = w_d / f"{stem}.srt.bak"
+            if bak_p.exists() and state.get_agent_status("translation_agent") in (
+                "FAILED_PERMANENT", "FAILED_MAX_RETRIES"
+            ):
+                agent_entry = state.data["agents"].get("translation_agent", {})
+                agent_entry.pop("error", None)
+                # Reset the attempt counter so the repaired SRT gets a fresh 3-try budget.
+                agent_entry["cross_session_attempts"] = 0
+                state.set_agent_status("translation_agent", "PENDING")
+                console.print(f"[cyan][Bootstrap] Translation reset — repaired SRT detected: {stem}[/cyan]")
 
         # 3. Bilingual
         bi_srt_p = w_d / f"{stem}.bilingual.srt"
@@ -224,14 +265,33 @@ class WorkflowEngine:
         v_name = str(video_path.name)
         video_task = progress.add_task(f" [dim]{v_name[:30]}[/dim]", total=len(self.agents)) # type: ignore
         
-        # Track completed agents for this video run
-        completed_agents: Set[str] = {id for id, info in state.data["agents"].items() if info["status"] == "COMPLETED"}
-        failed_agents: Set[str] = {id for id, info in state.data["agents"].items() if info["status"] == "FAILED"}
+        # Track agent states for this run.
+        #
+        # Design decisions:
+        #   • completed_agents  — never re-run.
+        #   • perm_failed       — FAILED_PERMANENT from state.json; never re-run across sessions.
+        #   • failed_agents     — starts pre-populated with perm_failed; grows as agents fail
+        #                         during this session.  Transient FAILED agents from the previous
+        #                         session are NOT pre-loaded here — they get a fresh retry attempt.
+        #
+        # Why NOT pre-populate failed_agents with regular FAILED?
+        #   Transient failures (network timeout, 429) should be retried on the next run.
+        #   Only permanent failures (400 bad payload, token limit) should be blocked forever.
+        completed_agents: Set[str] = {
+            id for id, info in state.data["agents"].items() if info["status"] == "COMPLETED"
+        }
+        perm_failed: Set[str] = {
+            id for id, info in state.data["agents"].items()
+            if info["status"] in ("FAILED_PERMANENT", "FAILED_MAX_RETRIES")
+        }
+        # In-session failure tracking.  Starts with perm_failed so permanently broken agents
+        # are blocked from is_blocked() checks and from ready_agents selection immediately.
+        failed_agents: Set[str] = set(perm_failed)
         progress.advance(video_task, advance=len(completed_agents))
 
-        while len(completed_agents) + len(failed_agents) < len(self.agents):
-            # Find agents ready to run: deps met (all completed), not already done/failed,
-            # and not blocked by a failed upstream agent (transitively)
+        while True:
+            # Find agents ready to run: deps met, not already done/failed this session,
+            # and not blocked by a failed upstream agent (transitively).
             def is_blocked(agent_id: str, visited: set | None = None) -> bool:
                 if visited is None: visited = set()
                 if agent_id in visited: return False
@@ -243,15 +303,13 @@ class WorkflowEngine:
             ready_agents = [
                 a for a in self.agents
                 if a.id not in completed_agents
+                and a.id not in failed_agents   # never retry a failed agent in the same session
                 and all(dep in completed_agents for dep in a.dependencies)
                 and not is_blocked(a.id)
             ]
 
             if not ready_agents:
-                # All remaining agents are either done, failed, or blocked by failures
-                if failed_agents:
-                    v_name = str(video_path.name)
-                    progress.update(video_task, description=f" {v_name[:30]} [red]Partial ({len(failed_agents)} failed)[/red]") # type: ignore
+                # All remaining agents are either done, failed, or blocked by failures.
                 break
 
             # Execute ready agents — independent branches run in the same round
@@ -273,14 +331,22 @@ class WorkflowEngine:
 
     def execute_agent(self, agent: AgentConfig, state: StateStore, progress: Progress, task_id: TaskID) -> bool:
         """Dispatches an agent action to the corresponding module."""
+        # Increment the persistent cross-session attempt counter BEFORE calling the API.
+        # This means every run that reaches this point is counted, whether it succeeds
+        # or fails.  On success the counter is irrelevant; on failure it gates escalation.
+        agent_state = state.data["agents"].setdefault(agent.id, {})
+        cross_attempts: int = int(agent_state.get("cross_session_attempts", 0)) + 1
+        agent_state["cross_session_attempts"] = cross_attempts
+        state.save()
+
         state.set_agent_status(agent.id, "RUNNING")
         v_name = str(state.working_dir.name)
         progress.update(task_id, description=f" {v_name[:30]} [cyan]{agent.id}...[/cyan]") # type: ignore
-        
+
         max_retries = int(agent.retry_policy.get("max_retries", 0) or 0)
         delay_seconds: float = float(agent.retry_policy.get("delay_seconds", agent.retry_policy.get("base_delay_seconds", 5)) or 5.0) # type: ignore
         backoff_multiplier: float = float(agent.retry_policy.get("backoff_multiplier", 1.0) or 1.0) # type: ignore
-        
+
         attempts = 0
         last_error = ""
         while attempts <= max_retries:
@@ -307,8 +373,35 @@ class WorkflowEngine:
                     time.sleep(delay_seconds)
                     delay_seconds *= backoff_multiplier # type: ignore
 
-        state.set_agent_status(agent.id, "FAILED", error=last_error)
-        console.print(f"[bold red]Agent {agent.id} failed on {state.working_dir.name} after {max_retries} retries:[/bold red] {last_error}")
+        # ── Classify the failure ──────────────────────────────────────────────
+        # Priority 1: content-level permanent error (400, token limit) — never retry.
+        # Priority 2: cross-session retry cap reached — needs human/agent review.
+        # Priority 3: transient failure — will be retried on the next run.
+        if _is_permanent_error(last_error):
+            state.set_agent_status(agent.id, "FAILED_PERMANENT", error=f"[PERMANENT] {last_error}")
+            console.print(
+                f"[bold red]⛔  {agent.id} PERMANENTLY failed on {state.working_dir.name} "
+                f"(bad payload / token limit — will not retry): "
+                f"{(last_error or '')[:120]}[/bold red]"  # type: ignore[index]
+            )
+        elif cross_attempts >= MAX_CROSS_SESSION_RETRIES:
+            state.set_agent_status(
+                agent.id, "FAILED_MAX_RETRIES",
+                error=f"[MAX_RETRIES {cross_attempts}/{MAX_CROSS_SESSION_RETRIES}] {last_error}",
+            )
+            console.print(
+                f"[bold yellow]⚠  {agent.id} hit max cross-session retries "
+                f"({cross_attempts}/{MAX_CROSS_SESSION_RETRIES}) on {state.working_dir.name}. "
+                f"[bold]Human / agent review required.[/bold] "
+                f"Last error: {(last_error or '')[:120]}[/bold yellow]"  # type: ignore[index]
+            )
+        else:
+            state.set_agent_status(agent.id, "FAILED", error=last_error)
+            console.print(
+                f"[red]✗  {agent.id} failed on {state.working_dir.name} "
+                f"(attempt {cross_attempts}/{MAX_CROSS_SESSION_RETRIES}, will retry next run): "
+                f"{(last_error or '')[:120]}[/red]"  # type: ignore[index]
+            )
         return False
 
     def _dispatch_action(self, agent: AgentConfig, state: StateStore) -> Dict[str, Any]:
@@ -399,6 +492,44 @@ class WorkflowEngine:
 
         console.print(table)
 
+    def _print_review_queue(self, media_files: List[Path]) -> None:
+        """Print a table of agents that hit MAX_CROSS_SESSION_RETRIES and need human review."""
+        rows = []
+        for f in media_files:
+            w_d = OUTPUT_DIR / f.stem
+            state_p = w_d / "state.json"
+            if not state_p.exists():
+                continue
+            try:
+                data = json.loads(state_p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for agent_id, info in data.get("agents", {}).items():
+                if info.get("status") == "FAILED_MAX_RETRIES":
+                    attempts = info.get("cross_session_attempts", "?")
+                    error = str(info.get("error", ""))[:80]  # type: ignore[index]
+                    rows.append((f.stem[:40], agent_id, str(attempts), error))  # type: ignore[index]
+
+        if not rows:
+            return
+
+        console.print()
+        table = Table(
+            title=f"[bold yellow]⚠  Review Queue — agents that need human attention[/bold yellow]",
+            show_header=True, header_style="bold yellow", show_lines=False, expand=False,
+        )
+        table.add_column("Video", style="dim", max_width=42, no_wrap=True)
+        table.add_column("Agent", width=20)
+        table.add_column("Tries", justify="center", width=5)
+        table.add_column("Last error", no_wrap=False, max_width=60)
+        for video, agent, tries, error in rows:
+            table.add_row(video, agent, tries, error)
+        console.print(table)
+        console.print(
+            f"[yellow]  → Run [bold]python recover.py[/bold] or inspect "
+            f"[bold]output/<video>/state.json[/bold] to decide next steps.[/yellow]"
+        )
+
     def run_all(self, media_files: List[Path]):
         """Runs the entire pipeline on multiple files in parallel."""
         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TimeElapsedColumn(), console=console) as progress:
@@ -412,6 +543,7 @@ class WorkflowEngine:
 
         # Print QA summary once after all videos complete (only newly translated ones)
         self._print_qa_summary()
+        self._print_review_queue(media_files)
 
 def main():
     workflow_json = BASE_DIR / "multi_agent_workflow.json"

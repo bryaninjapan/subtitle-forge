@@ -19,10 +19,10 @@ from pathlib import Path
 from config import OUTPUT_DIR # type: ignore
 from srt_utils import parse_srt, write_srt, create_bilingual_srt, convert_srt_to_vtt, clean_subtitle_text, split_monolithic_entry # type: ignore
 
-# An SRT is considered "monolithic" (garbled ASR output) when the file is large
-# but has very few entries — e.g. the entire 30-min transcript in one subtitle block.
-_MONOLITHIC_MIN_BYTES = 50_000   # file must be at least 50 KB
-_MONOLITHIC_MAX_ENTRIES = 10     # and have fewer than 10 subtitle entries
+# An SRT entry is considered garbled when its text exceeds this character count.
+# A properly formatted subtitle entry is 10-200 chars; anything above 2000 is a
+# sign that Gemini dumped a large chunk (or the entire transcript) into one block.
+_MONOLITHIC_MAX_ENTRY_CHARS = 2_000
 
 
 # ─────────────────────────── Gap Scanner ─────────────────────────────────────
@@ -74,15 +74,16 @@ def scan_gaps(output_dir: Path) -> dict[str, list[Path]]:
             gaps["needs_asr"].append(d)
             continue
 
-        # D: monolithic SRT — large file with very few entries (garbled ASR output)
-        if srt_p.stat().st_size >= _MONOLITHIC_MIN_BYTES:
-            try:
-                entries = parse_srt(srt_p.read_text(encoding="utf-8"))
-                if 0 < len(entries) <= _MONOLITHIC_MAX_ENTRIES:
-                    gaps["D_monolithic"].append(d)
-                    continue  # treat as needs repair before translation
-            except Exception:
-                pass
+        # D: monolithic SRT — any entry exceeds the max char threshold.
+        # Catches: one-entry dumps, chapter-level blocks, and hybrid cases where
+        # most entries are fine but one giant tail entry was appended.
+        try:
+            entries = parse_srt(srt_p.read_text(encoding="utf-8"))
+            if entries and max(len(e.text) for e in entries) > _MONOLITHIC_MAX_ENTRY_CHARS:
+                gaps["D_monolithic"].append(d)
+                continue  # treat as needs repair before translation
+        except Exception:
+            pass
 
         # A: has srt + zh but no bilingual
         if has_srt and has_zh and not has_bi:
@@ -130,11 +131,43 @@ def recover_transcripts(dirs: list[Path]) -> tuple[int, list[Path]]:
     return len(fixed), fixed
 
 
-def recover_monolithic(dirs: list[Path]) -> tuple[int, list[Path]]:
-    """D: Split monolithic SRT files (entire transcript in ≤10 entries) into proper subtitles.
+def _strip_hallucination_tail(text: str, window: int = 400, repeat_threshold: float = 0.5) -> str:
+    """Remove repetitive garbage appended by Gemini at the end of a large output.
 
-    Uses synthetic timestamps based on ~130 words/min speaking rate.
-    The original corrupted file is preserved as <stem>.srt.bak before overwriting.
+    Scans the last `window` characters.  If more than `repeat_threshold` of the
+    unique tokens in that window are the same word/phrase (e.g. "the, the, the…"),
+    truncate back to the last clean sentence boundary before the garbage starts.
+    """
+    import re
+    if len(text) <= window:
+        return text
+    tail = text[-window:]  # type: ignore[index]
+    tokens = re.split(r'[\s,]+', tail.lower())
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return text
+    most_common_ratio = max(tokens.count(t) for t in set(tokens)) / len(tokens)
+    if most_common_ratio < repeat_threshold:
+        return text  # tail looks normal
+    # Find the last clean sentence ending before the garbage
+    clean = text[:-window]  # type: ignore[index]
+    for punct in ('.', '?', '!'):
+        pos = clean.rfind(punct)
+        if pos > len(clean) * 0.5:  # don't truncate too aggressively
+            return clean[:pos + 1].strip()
+    return clean.strip()
+
+
+def recover_monolithic(dirs: list[Path]) -> tuple[int, list[Path]]:
+    """D: Split oversized SRT entries into properly-sized subtitle entries.
+
+    Handles three sub-cases:
+      - Entire transcript in a single entry (ET-LM5 pattern)
+      - Chapter-level blocks (PM-LM1 pattern)
+      - Hybrid: mostly normal entries but one giant tail dump (ET-LM3 pattern)
+
+    Uses synthetic timestamps at ~130 words/min from each entry's start time.
+    The original file is preserved as <stem>.srt.bak before overwriting.
     """
     fixed = []
     for d in dirs:
@@ -148,28 +181,39 @@ def recover_monolithic(dirs: list[Path]) -> tuple[int, list[Path]]:
                 print(f"  [SKIP-D] {stem}: could not parse existing SRT")
                 continue
 
+            import dataclasses
+            oversized_count = sum(1 for e in raw_entries if len(e.text) > _MONOLITHIC_MAX_ENTRY_CHARS)
+
             new_entries = []
             for e in raw_entries:
-                if len(e.text) > 500:
-                    new_entries.extend(split_monolithic_entry(e))
+                if len(e.text) > _MONOLITHIC_MAX_ENTRY_CHARS:
+                    clean_text = _strip_hallucination_tail(e.text)
+                    if clean_text != e.text:
+                        stripped = len(e.text) - len(clean_text)
+                        print(f"  [STRIP] entry#{e.index}: removed {stripped:,} chars of trailing garbage")
+                    clean_entry = dataclasses.replace(e, text=clean_text)
+                    new_entries.extend(split_monolithic_entry(clean_entry))
                 else:
                     new_entries.append(e)
 
-            # Re-index
+            # Re-index sequentially
             for i, e in enumerate(new_entries, 1):
                 e.index = i
 
             if len(new_entries) <= len(raw_entries):
-                print(f"  [SKIP-D] {stem}: split produced no new entries (already minimal?)")
+                print(f"  [SKIP-D] {stem}: split produced no new entries")
                 continue
 
-            # Back up the corrupted file, write the repaired one
+            # Back up the corrupted file, then write the repaired one
+            if bak_p.exists():
+                bak_p.unlink()
             srt_p.rename(bak_p)
             write_srt(new_entries, srt_p)
-            print(f"  [OK-D] {stem}: {len(raw_entries)} → {len(new_entries)} entries (bak: {bak_p.name})")
+            print(f"  [OK-D] {stem}: {len(raw_entries)} entries ({oversized_count} oversized) "
+                  f"→ {len(new_entries)} entries (bak: {bak_p.name})")
             fixed.append(d)
-        except Exception as e:
-            print(f"  [ERR-D] {stem}: {e}")
+        except Exception as exc:
+            print(f"  [ERR-D] {stem}: {exc}")
 
     return len(fixed), fixed
 

@@ -90,15 +90,18 @@ def _translate_batch(
                 max_tokens=dynamic_max_tokens,
             )
 
-            response_text = response.choices[0].message.content or ""
+            response_text = ""
+            if response and response.choices and len(response.choices) > 0:
+                response_text = response.choices[0].message.content or ""
+            
             base_usage = UsageData(
-                prompt_token_count=response.usage.prompt_tokens if response.usage else 0,
-                candidates_token_count=response.usage.completion_tokens if response.usage else 0,
+                prompt_token_count=response.usage.prompt_tokens if response and response.usage else 0,
+                candidates_token_count=response.usage.completion_tokens if response and response.usage else 0,
             )
 
             # QA Loop — best-effort; fall back to base translation on any failure
             from config import ENABLE_QA_LOOP  # type: ignore
-            if not ENABLE_QA_LOOP:
+            if not ENABLE_QA_LOOP or not response_text:
                 return response_text, base_usage
 
             try:
@@ -116,13 +119,18 @@ def _translate_batch(
                     temperature=0.0,
                     max_tokens=dynamic_max_tokens,
                 )
-                qa_in = qa_res.usage.prompt_tokens if qa_res.usage else 0
-                qa_out = qa_res.usage.completion_tokens if qa_res.usage else 0
+                
+                qa_text = response_text
+                if qa_res and qa_res.choices and len(qa_res.choices) > 0:
+                    qa_text = qa_res.choices[0].message.content or response_text
+                
+                qa_in = qa_res.usage.prompt_tokens if qa_res and qa_res.usage else 0
+                qa_out = qa_res.usage.completion_tokens if qa_res and qa_res.usage else 0
                 combined_usage = UsageData(
                     prompt_token_count=base_usage.prompt_token_count + qa_in,
                     candidates_token_count=base_usage.candidates_token_count + qa_out,
                 )
-                return qa_res.choices[0].message.content or response_text, combined_usage
+                return qa_text, combined_usage
 
             except Exception as qa_err:
                 print(f"  [QA] Failed (using base translation): {qa_err}")
