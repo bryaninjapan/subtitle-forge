@@ -79,7 +79,7 @@ graph TD
 
 |智能體 (Agent)|職責 (Role)|所需輸入 (Inputs)|產生輸出 (Outputs)|
 |---|---|---|---|
-|**ASR Agent**|將音檔精準轉換為文字與時間軸|`audio_path`, [glossary](file:///Users/bryan/main/subtitle-forge/config.py#76-89)|`srt_text`, `transcript`|
+|**ASR Agent**|將音檔精準轉換為文字與時間軸 (Local MLX: Qwen3-ASR)|`audio_path`, [glossary](file:///Users/bryan/main/subtitle-forge/config.py#76-89)|`srt_text`, `transcript`|
 |**Vision Agent**|視覺截幀並解譯投影片內容|`video_path`|`frame_paths`, `visual_context`|
 |**Translation Agent**|根據語境跟專有名詞進行翻譯|`srt_text`, [glossary](file:///Users/bryan/main/subtitle-forge/config.py#76-89)|`zh_srt_text`|
 |**Bilingual Agent**|將雙語時間軸完美合稿|`srt_text`, `zh_srt_text`|`bilingual_srt_text`|
@@ -108,3 +108,11 @@ graph TD
 
 這些文件就像是工廠裡的「電路、水路與監控系統」，雖然不直接參與產品加工，但沒有它們，工廠將無法穩定運行。
 
+
+---
+
+## 5. 2026-04 混合架構更新 (Local-Cloud Hybrid)
+
+目前的架構已升級為 **「本地轉錄 + 雲端推理」** 的混合模式：
+- **本地端 (On-premise)**: 負責處理數據量大、較為機械化的任務（如 ASR）。使用 `Qwen3-ASR-1.7B` 確保隱私與零成本。
+- **雲端 (Cloud)**: 負責需要高度語言理解與跨模態分析的任務（如翻譯、QA、多模態筆記）。使用 `DeepSeek-V3` 與 `Gemini` 以維持專業產出品質。

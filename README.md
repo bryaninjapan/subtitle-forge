@@ -20,9 +20,10 @@ CFA 教學影片自動化處理工具，透過 Gemini API 完成語音辨識、�
 
 ### 3. 架構與成本 (Cloud Efficiency)
 *   **模型分級策略 (Model Tiering)**：
-    *   **Core Tasks**: `gemini-2.5-flash` (ASR / 高品質翻譯)
-    *   **Side Tasks**: `gemini-1.5-flash-8b` (章節、OCR、簡單處理) - **節省 ~60% 非核心成本**。
-    *   **QA Tasks**: `PRO_MODEL` (保留給高品質校對迴圈使用)。
+    *   **ASR**: `Qwen3-ASR-1.7B` (本地端 MLX 運行) - **省下 100% 語音轉錄成本**。
+    *   **Translation**: `DeepSeek-V3` / `OpenRouter` (高品質翻譯)。
+    *   **Chapter/QA**: `OpenRouter Free Model` (節省非核心成本)。
+    *   **Notes Agent**: `Gemini 1.5 Flash` (發揮多模態 Vision 優勢)。
 *   **效能分流**：採用 ASR (2x) 與 Post-Proc (4x) 分級並行，優化 I/O 與 CPU 資源利用。
 
 ---
@@ -303,3 +304,9 @@ output/{影片名稱}/
 
 > [!TIP]
 > **靈活配置**: 若需調整重試上限，只需修改 `director.py:37` 的 `MAX_CROSS_SESSION_RETRIES` 常數即可。
+---
+
+### Phase 12: Hybrid Local-Cloud Excellence (2026-04)
+- **Local ASR Deployment (Qwen3-ASR)**: 導入 `Qwen3-ASR-1.7B` 本地模型。利用 Apple Silicon (MLX) 強大效能實現零成本、高精度的本地音訊轉錄。
+- **Hybrid Orchestration Strategy**: 確立「ASR 本地化、推理雲端化」架構。將資源密集型的 ASR 留在本地，核心翻譯與品質校正保留在 DeepSeek-V3 / OpenRouter 等雲端強模型以確保輸出品質。
+- **VLM Local Analysis (Option)**: 確認對本機 VLM (如 Gemma 4) 的支援能力，為未來全本地化 Vision 筆記生成鋪路。
