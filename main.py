@@ -123,15 +123,6 @@ def main():
         engine.run_all(media_files)
         print_summary()
         
-        # Anki Export
-        from config import GLOSSARY_PATH # type: ignore
-        if GLOSSARY_PATH.exists():
-            from anki_exporter import export_to_anki # type: ignore
-            try:
-                export_to_anki(json.loads(GLOSSARY_PATH.read_text(encoding="utf-8")), BASE_DIR / "cfa_glossary.apkg")
-                console.print("[bold green]Anki deck updated: cfa_glossary.apkg[/bold green]")
-            except Exception as e:
-                console.print(f"[dim red]Anki export failed: {e}[/dim red]")
     else:
         console.print("[yellow]No media files found to process. Use -h for help.[/yellow]")
 

@@ -1,9 +1,8 @@
 import subprocess
 import os
 import hashlib
+import re
 from pathlib import Path
-from gemini_client import get_gemini_client
-from google.genai import types
 
 def get_media_duration_sec(path: Path) -> float:
     """Return duration in seconds via ffprobe; 0.0 if unavailable."""
@@ -42,21 +41,34 @@ def burn_subtitles(video_path: Path, subtitle_path: Path, output_path: Path):
     except: return False
 
 def check_audio_quality(media_path: Path) -> str:
+    """Check audio quality using ffmpeg volumedetect (no API call needed)."""
     from config import OUTPUT_DIR
-    client = get_gemini_client()
     tmp_audio = OUTPUT_DIR / f"quality_check_{os.getpid()}.wav"
-    subprocess.run(["ffmpeg", "-i", str(media_path), "-t", "30", "-vn", "-ac", "1", "-ar", "16000", "-y", str(tmp_audio)], capture_output=True)
-    if not tmp_audio.exists(): return "Unknown"
     try:
-        up = client.files.upload(file=str(tmp_audio), config={"mime_type": "audio/wav"})
-        from config import LITE_MODEL
-        res = client.models.generate_content(
-            model=LITE_MODEL,
-            contents=[types.Part.from_uri(file_uri=up.uri, mime_type=up.mime_type)],
-            config=types.GenerateContentConfig(system_instruction="Analyze audio quality. Is it clear? Return 'Good' or a short warning.")
+        subprocess.run(
+            ["ffmpeg", "-i", str(media_path), "-t", "30", "-vn", "-ac", "1", "-ar", "16000", "-y", str(tmp_audio)],
+            capture_output=True,
         )
-        client.files.delete(name=up.name); tmp_audio.unlink()
-        return res.text.strip()
-    except:
-        if tmp_audio.exists(): tmp_audio.unlink()
+        if not tmp_audio.exists():
+            return "Unknown"
+        result = subprocess.run(
+            ["ffmpeg", "-i", str(tmp_audio), "-af", "volumedetect", "-f", "null", "-"],
+            capture_output=True, text=True,
+        )
+        mean_match = re.search(r"mean_volume: ([-\d.]+) dB", result.stderr)
+        max_match = re.search(r"max_volume: ([-\d.]+) dB", result.stderr)
+        if mean_match and max_match:
+            mean_db = float(mean_match.group(1))
+            max_db = float(max_match.group(1))
+            if max_db < -30:
+                return "Warning: Very low audio level"
+            if mean_db < -40:
+                return "Warning: Low average volume"
+            return "Good"
         return "Unknown"
+    except:
+        return "Unknown"
+    finally:
+        if tmp_audio.exists():
+            try: tmp_audio.unlink()
+            except: pass

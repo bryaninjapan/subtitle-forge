@@ -4,9 +4,11 @@ api:
   model: "gemini-2.5-flash"
   lite_model: "gemini-2.5-flash"
   pro_model: "gemini-2.5-flash"
+  asr_backend: "openrouter"   # ASR backend: "gemini" or "openrouter"
 
 openrouter:
-  text_model: "deepseek/deepseek-chat-v3-0324"
+  text_model: "deepseek/deepseek-v4-flash:free"
+  asr_model: "google/gemini-2.0-flash-001"
   
 pipeline:
   asr_concurrent: 2
@@ -25,13 +27,13 @@ glossary:
   difficulty_level: "L1" # L1, L2, L3
   
 output:
-  bilingual: true
-  webvtt: true
-  validation: true
+  bilingual: false
+  webvtt: false
+  validation: false
   study_notes: true
-  chapters: true
-  slide_pdf: true        # Extract keyframes to PDF slide deck
-  structured_json: true  # Output study_data.json for Quiz Apps
+  chapters: false
+  slide_pdf: false
+  structured_json: false
   
 # Costs per 1 million tokens (USD)
 costs:

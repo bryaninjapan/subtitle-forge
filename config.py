@@ -27,9 +27,11 @@ api_c: dict[str, Any] = _cfg.get("api", {})
 DEFAULT_GEMINI_MODEL = api_c.get("model", "gemini-2.5-flash")
 LITE_MODEL = api_c.get("lite_model", "gemini-2.5-flash")
 PRO_MODEL = api_c.get("pro_model", "gemini-2.5-flash")
+ASR_BACKEND = api_c.get("asr_backend", "gemini")  # "gemini" or "openrouter"
 
 or_c: dict[str, Any] = _cfg.get("openrouter", {})
 OPENROUTER_TEXT_MODEL = or_c.get("text_model", "qwen/qwen-2.5-72b-instruct:free")
+OPENROUTER_ASR_MODEL = or_c.get("asr_model", "google/gemini-2.0-flash-001")
 
 pipe_c: dict[str, Any] = _cfg.get("pipeline", {})
 ASR_MAX_CONCURRENT = pipe_c.get("asr_concurrent", 2)

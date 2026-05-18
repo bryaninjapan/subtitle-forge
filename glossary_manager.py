@@ -2,22 +2,16 @@ import json
 import os
 import threading
 from pathlib import Path
-from google import genai
-from google.genai import types
-from config import DEFAULT_GEMINI_MODEL, GLOSSARY_PATH, load_glossary
-from gemini_client import get_gemini_client
+from config import OPENROUTER_TEXT_MODEL, GLOSSARY_PATH, load_glossary
+from openrouter_client import get_openrouter_client
 
 _glossary_lock = threading.Lock()
-
-def _get_gemini_client():
-    return get_gemini_client()
 
 def load_glossary_raw() -> dict:
     """Load the raw dictionary including metadata (hits)."""
     if not GLOSSARY_PATH.exists(): return {}
     try:
         data = json.loads(GLOSSARY_PATH.read_text(encoding="utf-8"))
-        # Standardize format: {term: {"val": "trans", "hits": N}}
         standardized = {}
         for k, v in data.items():
             if isinstance(v, dict): standardized[k] = v
@@ -52,25 +46,40 @@ def prune_glossary(min_hits: int = 2):
             print(f"  [Glossary] Pruned {before - after} low-usage terms.")
 
 def extract_terms_with_ai(transcript_text: str, current_glossary: dict) -> dict:
-    client = _get_gemini_client()
-    if not client: return {}
-    model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
-    existing_keys = ", ".join(current_glossary.keys())
-    
-    prompt = f"Identify 5-10 technical CFA terms NOT in: [{existing_keys}]. Output JSON: {{'term': 'translation'}}.\nText:\n{transcript_text[:5000]}"
     try:
-        res = client.models.generate_content(
-            model=model, contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
+        client = get_openrouter_client()
+        model = os.environ.get("OPENROUTER_TEXT_MODEL", OPENROUTER_TEXT_MODEL)
+        existing_keys = ", ".join(current_glossary.keys())
+
+        system = "You are a CFA terminology extractor. Output ONLY valid JSON with no explanation, no markdown fences."
+        prompt = (
+            f"Identify 5-10 technical CFA terms NOT already in: [{existing_keys}].\n"
+            f"Output JSON object: {{\"term\": \"chinese_translation\"}}\n"
+            f"Text:\n{transcript_text[:5000]}"
         )
-        return json.loads(res.text)
-    except: return {}
+        res = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.0,
+        )
+        text = (res.choices[0].message.content or "").strip()
+        # Strip markdown fences if present
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        return json.loads(text)
+    except:
+        return {}
 
 def update_glossary_auto(srt_path: Path):
     with _glossary_lock:
         raw = load_glossary_raw()
         current = {k: v["val"] for k, v in raw.items()}
-        
+
         txt_p = srt_path.with_suffix(".txt")
         text = txt_p.read_text(encoding="utf-8") if txt_p.exists() else ""
         if not text: return
@@ -80,7 +89,7 @@ def update_glossary_auto(srt_path: Path):
             added = 0
             for k, v in new_terms.items():
                 if k not in raw:
-                    raw[k] = {"val": v, "hits": 1} # Start with 1 hit as it was found in transcript
+                    raw[k] = {"val": v, "hits": 1}
                     added += 1
             if added > 0:
                 save_glossary_raw(raw)
