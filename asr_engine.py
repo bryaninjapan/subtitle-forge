@@ -20,7 +20,10 @@ from config import (
     OUTPUT_DIR,
     VIDEO_EXTENSIONS,
     AUDIO_EXTENSIONS,
+    ASR_BACKEND,
+    OPENROUTER_ASR_MODEL,
 )  # type: ignore
+from openrouter_client import get_openrouter_client  # type: ignore
 
 # ─────────────────────────── Shared utilities ────────────────────────────────
 
@@ -186,6 +189,104 @@ def _transcribe_with_gemini(
             try: client.files.delete(name=uploaded_file.name)  # type: ignore
             except: pass
 
+# ─────────────────────────── OpenRouter ASR ─────────────────────────────────
+
+_OPENROUTER_ASR_SYSTEM_PROMPT = """\
+You are a professional transcription service. An audio file is provided as base64-encoded data.
+Transcribe the audio into a valid SRT subtitle file. Follow this EXACT format:
+
+1
+00:00:01,000 --> 00:00:05,500
+First subtitle text here.
+
+2
+00:00:06,000 --> 00:00:11,200
+Second subtitle text here.
+
+STRICT FORMAT RULES:
+- Index number and timestamp MUST be on SEPARATE lines. Never on the same line.
+- Timestamp format is EXACTLY: HH:MM:SS,mmm --> HH:MM:SS,mmm
+  - HH = 2-digit hours (always include, use 00 if less than 1 hour)
+  - MM = 2-digit minutes
+  - SS = 2-digit seconds
+  - mmm = 3-digit milliseconds
+  - Separator before milliseconds is a COMMA (,) NOT a colon (:)
+  - CORRECT: 00:01:23,456 --> 00:01:27,890
+  - WRONG:   00:01:23:456  (colon before ms)
+  - WRONG:   1 00:01:23,456 (index on same line as timestamp)
+- Each subtitle: 1-2 sentences, roughly 5-10 seconds.
+- Do NOT include any explanation, preamble, or code fences.
+- Do NOT translate — output the original language only.
+- Preserve proper nouns, abbreviations, and technical terms exactly as spoken.
+- Speaker Diarization: If multiple speakers are detected, prefix lines with [Speaker A], [Speaker B], etc.
+"""
+
+
+def _transcribe_with_openrouter(
+    media_path: Path,
+    language: str | None,
+    model: str = OPENROUTER_ASR_MODEL,
+    retries: int = 3,
+    retry_delay: float = 10.0,
+) -> tuple[str, object]:  # type: ignore
+    import base64
+    import random
+    from config import MIME_TYPES, get_truncated_glossary  # type: ignore
+
+    mime_type = MIME_TYPES.get(media_path.suffix.lower(), "audio/wav")
+
+    # Read audio file and base64-encode it
+    audio_bytes = media_path.read_bytes()
+    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+    client = get_openrouter_client()
+
+    lang_instr = f"\nThe audio language is {language}. Transcribe in {language}." if language else ""
+    glossary = get_truncated_glossary(50)
+    gloss_instr = f"\n\nTechnical context:\n" + ", ".join(f"{k}({v})" for k, v in glossary.items()) if glossary else ""
+    prompt = _OPENROUTER_ASR_SYSTEM_PROMPT + lang_instr + gloss_instr
+
+    # Derive short format name from mime_type (e.g. "audio/wav" -> "wav")
+    audio_format = mime_type.split("/")[-1].replace("mpeg", "mp3")
+
+    # Build the content array with base64 audio and text prompt
+    content = [
+        {
+            "type": "input_audio",
+            "input_audio": {
+                "data": audio_b64,
+                "format": audio_format,
+            },
+        },
+        {
+            "type": "text",
+            "text": prompt,
+        },
+    ]
+
+    for attempt in range(1, retries + 1):
+        try:
+            from usage_tracker import check_backoff, signal_backoff  # type: ignore
+            check_backoff()
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": content}],
+                temperature=0.0,
+            )
+            # OpenRouter returns usage in the response under usage field
+            usage = getattr(response, "usage", None)
+            text = response.choices[0].message.content
+            return text, usage
+        except Exception as e:
+            err_str = str(e).lower()
+            if any(x in err_str for x in ["429", "quota", "overloaded", "503", "rate"]):
+                wait = (retry_delay * (2 ** (attempt - 1))) + random.uniform(0, 1)
+                signal_backoff(wait + 5)
+                time.sleep(wait)
+            elif attempt == retries:
+                raise
+    raise RuntimeError("ASR failed after retries")
+
 # ─────────────────────────── Public API ─────────────────────────────────────
 
 def transcribe_files(
@@ -195,9 +296,14 @@ def transcribe_files(
 ) -> dict[Path, Path]:
     from srt_utils import parse_srt, clean_subtitle_text, write_srt  # type: ignore
     gemini_model = str(os.environ.get("GEMINI_ASR_MODEL", DEFAULT_GEMINI_MODEL))
+    asr_backend = str(os.environ.get("ASR_BACKEND", ASR_BACKEND))
+    openrouter_model = str(os.environ.get("OPENROUTER_ASR_MODEL", OPENROUTER_ASR_MODEL))
+
+    backend_name = "OpenRouter" if asr_backend == "openrouter" else "Google Gemini API"
+    model_name = openrouter_model if asr_backend == "openrouter" else gemini_model
 
     print(f"\n{'='*60}")
-    print(f"ASR backend: Google Gemini API ({gemini_model}) {'[DRY RUN]' if dry_run else ''}")
+    print(f"ASR backend: {backend_name} ({model_name}) {'[DRY RUN]' if dry_run else ''}")
     print(f"{'='*60}\n")
 
     results: dict[Path, Path] = {}
@@ -241,14 +347,20 @@ def transcribe_files(
                     continue
                 silence_cache.write_text(stats, encoding="utf-8")
 
-            raw_srt, usage = _transcribe_with_gemini(upload_path, language, gemini_model)
+            if asr_backend == "openrouter":
+                raw_srt, usage = _transcribe_with_openrouter(upload_path, language, openrouter_model)
+            else:
+                raw_srt, usage = _transcribe_with_gemini(upload_path, language, gemini_model)
             if usage:
-                log_usage("ASR", media_path.name, usage.prompt_token_count, usage.candidates_token_count)  # type: ignore
+                if asr_backend == "openrouter":
+                    log_usage("ASR", media_path.name, usage.prompt_tokens, usage.completion_tokens)  # type: ignore
+                else:
+                    log_usage("ASR", media_path.name, usage.prompt_token_count, usage.candidates_token_count)  # type: ignore
 
             if not raw_srt.strip():
                 from usage_tracker import log_failure  # type: ignore
-                log_failure("ASR", media_path.name, "Gemini returned empty transcription")
-                print(f"  [WARNING] Gemini returned EMPTY transcription for {media_path.name}.")
+                log_failure("ASR", media_path.name, f"{backend_name} returned empty transcription")
+                print(f"  [WARNING] {backend_name} returned EMPTY transcription for {media_path.name}.")
                 (out_dir / f"{media_path.stem}_asr_debug.txt").write_text("[EMPTY RESPONSE]", encoding="utf-8")
                 continue
 
@@ -284,7 +396,7 @@ def transcribe_files(
                     log_failure("ASR", media_path.name,
                                 f"Suspicious output: {len(entries)} entries for "
                                 f"{duration_sec/60:.1f}min audio (expected ≥{min_expected}). "
-                                "Gemini may have returned garbled SRT format.")
+                                f"{backend_name} may have returned garbled SRT format.")
                     print(f"  [WARNING] Only {len(entries)} entries for "
                           f"{duration_sec/60:.1f}min audio — ASR output may be garbled.")
 
@@ -306,19 +418,31 @@ def transcribe_files(
 
     return results
 
-def transcribe_one_video(audio_16khz_path: str, language: Optional[str], working_directory: str) -> Dict[str, Any]:
+def transcribe_one_video(audio_16khz_path: str, language: Optional[str], working_directory: str, backend: Optional[str] = None) -> Dict[str, Any]:
     """Single-video ASR wrapper for the Multi-Agent Director."""
     from pathlib import Path
     a_p = Path(audio_16khz_path)
     w_d = Path(working_directory)
     
-    # 1. Transcribe with AI (Gemini Flash)
-    raw_srt, usage = _transcribe_with_gemini(a_p, language)
+    if backend is None:
+        backend = os.environ.get("ASR_BACKEND", ASR_BACKEND)
+    
+    gemini_model = str(os.environ.get("GEMINI_ASR_MODEL", DEFAULT_GEMINI_MODEL))
+    openrouter_model = str(os.environ.get("OPENROUTER_ASR_MODEL", OPENROUTER_ASR_MODEL))
+    
+    # 1. Transcribe with AI (selected backend)
+    if backend == "openrouter":
+        raw_srt, usage = _transcribe_with_openrouter(a_p, language, openrouter_model)
+    else:
+        raw_srt, usage = _transcribe_with_gemini(a_p, language, gemini_model)
     
     # 2. Log usage if available
     if usage:
         from usage_tracker import log_usage # type: ignore
-        log_usage("ASR", a_p.name, usage.prompt_token_count, usage.candidates_token_count)
+        if backend == "openrouter":
+            log_usage("ASR", a_p.name, usage.prompt_tokens, usage.completion_tokens)
+        else:
+            log_usage("ASR", a_p.name, usage.prompt_token_count, usage.candidates_token_count)
     
     # 3. Clean and save result
     from srt_utils import parse_srt, clean_subtitle_text, write_srt # type: ignore

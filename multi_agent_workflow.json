@@ -33,28 +33,8 @@
       }
     },
     {
-      "id": "vision_agent",
-      "role": "Extract visual context and keyframes from video",
-      "action": "extract_keyframes",
-      "inputs": [
-        "video_path",
-        "working_directory"
-      ],
-      "outputs": [
-        "frame_paths",
-        "visual_context_summary"
-      ],
-      "dependencies": [
-        "preflight_agent"
-      ],
-      "retry_policy": {
-        "max_retries": 2,
-        "delay_seconds": 10
-      }
-    },
-    {
       "id": "asr_agent",
-      "role": "Speech-to-text transcription using Gemini Flex",
+      "role": "Speech-to-text transcription",
       "action": "transcribe_audio",
       "inputs": [
         "audio_16khz_path",
@@ -75,47 +55,8 @@
       }
     },
     {
-      "id": "translation_agent",
-      "role": "Context-aware translation using specific styles and guidelines",
-      "action": "translate_srt",
-      "inputs": [
-        "raw_srt_text",
-        "visual_context_summary",
-        "style",
-        "working_directory"
-      ],
-      "outputs": [
-        "zh_srt_text"
-      ],
-      "dependencies": [
-        "asr_agent",
-        "vision_agent"
-      ],
-      "retry_policy": {
-        "max_retries": 3,
-        "backoff_multiplier": 2.0,
-        "base_delay_seconds": 10
-      }
-    },
-    {
-      "id": "bilingual_agent",
-      "role": "Merge source and translated SRTs into a bilingual subtitle",
-      "action": "create_bilingual_srt",
-      "inputs": [
-        "raw_srt_text",
-        "zh_srt_text",
-        "working_directory"
-      ],
-      "outputs": [
-        "bilingual_srt_text"
-      ],
-      "dependencies": [
-        "translation_agent"
-      ]
-    },
-    {
       "id": "study_notes_agent",
-      "role": "Synthesize transcript and visual context into comprehensive study notes",
+      "role": "Synthesize transcript into comprehensive study notes",
       "action": "generate_study_notes",
       "inputs": [
         "transcript_text",
@@ -126,45 +67,12 @@
         "study_notes_md"
       ],
       "dependencies": [
-        "asr_agent",
-        "vision_agent"
+        "asr_agent"
       ],
       "retry_policy": {
         "max_retries": 2,
         "delay_seconds": 15
       }
-    },
-    {
-      "id": "chapter_agent",
-      "role": "Generate YouTube-style chapter timestamps based on logical topic shifts",
-      "action": "generate_video_chapters",
-      "inputs": [
-        "transcript_text",
-        "working_directory"
-      ],
-      "outputs": [
-        "chapter_text"
-      ],
-      "dependencies": [
-        "asr_agent"
-      ]
-    },
-    {
-      "id": "qa_judge_agent",
-      "role": "Evaluate translation quality via LLM-as-a-judge",
-      "action": "score_translation",
-      "inputs": [
-        "raw_srt_text",
-        "zh_srt_text"
-      ],
-      "outputs": [
-        "qa_score",
-        "qa_critique"
-      ],
-      "dependencies": [
-        "translation_agent"
-      ],
-      "run_condition": "settings.use_qa_scoring == true"
     }
   ],
   "engine_rules": {

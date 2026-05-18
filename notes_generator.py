@@ -1,20 +1,15 @@
 import os
+import base64
 import subprocess
 from pathlib import Path
-from google.genai import types  # type: ignore
 from usage_tracker import log_usage  # type: ignore
-from gemini_client import get_gemini_client  # type: ignore
 from openrouter_client import get_openrouter_client  # type: ignore
 from config import OPENROUTER_TEXT_MODEL  # type: ignore
-
-def _get_gemini_client():
-    return get_gemini_client()
 
 def _compress_image(fp: Path) -> bytes:
     """Resize image to max 1024px using ffmpeg to save tokens."""
     compressed_fp = fp.with_suffix(".tmp.jpg")
     try:
-        # Resize to max 1024px width/height while maintaining aspect ratio
         subprocess.run([
             "ffmpeg", "-y", "-i", str(fp),
             "-vf", "scale='if(gt(iw,ih),min(1024,iw),-1)':'if(gt(ih,iw),min(1024,ih),-1)'",
@@ -28,25 +23,20 @@ def _compress_image(fp: Path) -> bytes:
         return fp.read_bytes()
 
 def generate_study_notes(working_dir: Path, transcript_text: str, frame_paths: list[Path] | None = None):
-    """Generate professional CFA study notes from the transcript using Gemini."""
-    client = _get_gemini_client()
-    if not client:
-        print("  [Study Notes] ERROR: Gemini client not available. Skipping.")
-        return
-        
-    from config import DEFAULT_GEMINI_MODEL  # type: ignore
-    model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    """Generate professional CFA study notes from the transcript using OpenRouter."""
+    client = get_openrouter_client()
+    model = os.environ.get("OPENROUTER_TEXT_MODEL", OPENROUTER_TEXT_MODEL)
 
     v_name = working_dir.name
     print(f"  [Study Notes] Generating notes for '{v_name}'...")
-    
+
     notes_path = working_dir / f"{v_name}.studynotes.md"
     if notes_path.exists():
         print(f"  [Study Notes] [skip] Notes already exist: {notes_path.name}")
         return notes_path.read_text(encoding="utf-8")
 
     MAX_TRANSCRIPT_CHARS = 100_000
-    truncated = transcript_text[:MAX_TRANSCRIPT_CHARS]  # type: ignore
+    truncated = transcript_text[:MAX_TRANSCRIPT_CHARS]
     if len(transcript_text) > MAX_TRANSCRIPT_CHARS:
         truncated += "\n\n[transcript truncated for length]"
 
@@ -64,78 +54,69 @@ Sections to include:
 5. **中英术语对照 (Terminology Table)**: A table of technical terms used in the video.
 """
 
-    prompt = f"### Transcript:\n{truncated}"
-    contents = [prompt]
-    
+    text_prompt = f"### Transcript:\n{truncated}"
+
+    # Build content array; attach images if available
+    user_content: list = [{"type": "text", "text": text_prompt}]
     frame_links = ""
     if frame_paths:
-        print(f"  [Study Notes] Processing {len(frame_paths)} keyframes with compression...")
+        print(f"  [Study Notes] Processing {len(frame_paths)} keyframes...")
         frame_links = "\n\n### 課程投影片回顧\n"
         for i, fp in enumerate(frame_paths, 1):
             if not fp.exists(): continue
-            
-            # 1. Add to markdown links
-            rel_path = f"frames/{fp.name}"
-            frame_links += f"![投影片 {i}]({rel_path})\n"
-            
-            # 2. Add as Multimodal part (compressed)
+            frame_links += f"![投影片 {i}](frames/{fp.name})\n"
             try:
                 img_bytes = _compress_image(fp)
-                contents.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
+                b64 = base64.b64encode(img_bytes).decode("utf-8")
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                })
             except Exception as e:
                 print(f"  [Study Notes] Failed to attach {fp.name}: {e}")
+
+    def _call(content):
+        return client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": content},
+            ],
+            temperature=0.2,
+        )
 
     try:
         from usage_tracker import check_backoff  # type: ignore
         check_backoff()
-        
-        response = client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.2,
-            )
-        )
-        
-        usage = response.usage_metadata
-        if usage:
-            log_usage("Notes", v_name, usage.prompt_token_count, usage.candidates_token_count)
-            print(f"  Token Usage (Notes): Input={usage.prompt_token_count}, Output={usage.candidates_token_count}")
-
+        res = _call(user_content)
     except Exception as e:
-        print(f"  [Study Notes] Multimodal failed: {e}. Trying text-only fallback (OpenRouter)...")
-        try:
-            or_client = get_openrouter_client()
-            or_model = os.environ.get("OPENROUTER_TEXT_MODEL", OPENROUTER_TEXT_MODEL)
-            or_res = or_client.chat.completions.create(
-                model=or_model,
-                messages=[
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.0,
-            )
-            # Wrap in a simple namespace so response.text works below
-            class _Resp:
-                text = (or_res.choices[0].message.content or "").strip()
-                usage_metadata = None
-            response = _Resp()
-            fallback_in = or_res.usage.prompt_tokens if or_res.usage else 0
-            fallback_out = or_res.usage.completion_tokens if or_res.usage else 0
-            log_usage("Notes", v_name, fallback_in, fallback_out, model=or_model)
-        except Exception as e2:
-            print(f"  [Study Notes] Critical Failure: {e2}")
+        if frame_paths:
+            # Model may not support images — retry text-only
+            print(f"  [Study Notes] Image call failed ({e}), retrying text-only...")
+            try:
+                res = _call(text_prompt)
+            except Exception as e2:
+                print(f"  [Study Notes] Critical Failure: {e2}")
+                from usage_tracker import log_failure  # type: ignore
+                log_failure("Notes", v_name, str(e2))
+                raise e2
+        else:
+            print(f"  [Study Notes] Critical Failure: {e}")
             from usage_tracker import log_failure  # type: ignore
-            log_failure("Notes", v_name, str(e2))
-            raise e2
+            log_failure("Notes", v_name, str(e))
+            raise e
+
+    if res.usage:
+        log_usage("Notes", v_name, res.usage.prompt_tokens, res.usage.completion_tokens, model=model)
+        print(f"  Token Usage (Notes): Input={res.usage.prompt_tokens}, Output={res.usage.completion_tokens}")
+
+    response_text = (res.choices[0].message.content or "").strip()
 
     try:
         notes_path.parent.mkdir(parents=True, exist_ok=True)
-        notes_content = f"# CFA Study Notes: {v_name}\n\n" + response.text
+        notes_content = f"# CFA Study Notes: {v_name}\n\n" + response_text
         if frame_links:
             notes_content += frame_links
-             
         notes_path.write_text(notes_content, encoding="utf-8")
         print(f"  [Study Notes] Saved: {notes_path.name}")
         return notes_content
