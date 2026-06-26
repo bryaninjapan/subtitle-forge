@@ -25,7 +25,14 @@ test_gemini.py
 process_vids.sh
 process_fs_batch.sh
 usage_log.json
-pipeline_report.md
 tmp/
 *.log
 .env
+
+# Build artifacts / pipeline outputs (auto-generated, not source)
+cfa_glossary.apkg
+usage_log.jsonl
+pipeline_failures.md
+pipeline_report.md
+cost_history.md
+usage_sample_*.json
