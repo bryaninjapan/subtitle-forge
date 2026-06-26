@@ -1,34 +1,27 @@
-"""ASR engine using Gemini API for video/audio transcription."""
+"""ASR engine using local Qwen3-ASR-1.7B (via mlx-qwen3-asr) for transcription."""
 
 from __future__ import annotations
 
-import os
 import sys
 import subprocess
-import time
-import json
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
-from usage_tracker import log_usage  # type: ignore
+from typing import Optional, Dict, Any
 from media_utils import get_media_duration_sec  # type: ignore
-from gemini_client import get_gemini_client  # type: ignore
 
 from config import (
     AUDIO_SAMPLE_RATE,
-    DEFAULT_GEMINI_MODEL,
     FFMPEG_BIN,
     OUTPUT_DIR,
     VIDEO_EXTENSIONS,
     AUDIO_EXTENSIONS,
 )  # type: ignore
 
+QWEN3_ASR_MODEL = "Qwen/Qwen3-ASR-1.7B"
+
 # ─────────────────────────── Shared utilities ────────────────────────────────
 
 def is_media_file(path: Path) -> bool:
     return path.suffix.lower() in VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
-
-def _get_gemini_client():
-    return get_gemini_client()
 
 def check_dependencies() -> None:
     """Ensure ffmpeg and ffprobe are installed and available."""
@@ -89,102 +82,90 @@ def check_silence(audio_path: Path, threshold_db: int = -40) -> bool:
     total_silence = sum(float(d) for d in silence_durations)
     return (total_silence / duration) > 0.95
 
-# ─────────────────────────── Gemini ASR ─────────────────────────────────────
+# ─────────────────────────── Qwen3-ASR ──────────────────────────────────────
 
-_GEMINI_ASR_SYSTEM_PROMPT = """\
-You are a professional transcription service. Transcribe the audio file provided.
-Output ONLY a valid SRT subtitle file. Follow this EXACT format:
+def _seconds_to_srt_time(seconds: float) -> str:
+    """Convert float seconds to SRT timestamp: HH:MM:SS,mmm"""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int(round((seconds % 1) * 1000))
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
-1
-00:00:01,000 --> 00:00:05,500
-First subtitle text here.
 
-2
-00:00:06,000 --> 00:00:11,200
-Second subtitle text here.
+def _group_words_into_subtitles(
+    segments: list[dict],
+    max_duration: float = 5.0,
+    max_chars: int = 80,
+) -> list[dict]:
+    """Merge word-level segments into subtitle-sized blocks."""
+    blocks: list[dict] = []
+    buf_words: list[str] = []
+    buf_start: float = 0.0
+    buf_end: float = 0.0
 
-STRICT FORMAT RULES:
-- Index number and timestamp MUST be on SEPARATE lines. Never on the same line.
-- Timestamp format is EXACTLY: HH:MM:SS,mmm --> HH:MM:SS,mmm
-  - HH = 2-digit hours (always include, use 00 if less than 1 hour)
-  - MM = 2-digit minutes
-  - SS = 2-digit seconds
-  - mmm = 3-digit milliseconds
-  - Separator before milliseconds is a COMMA (,) NOT a colon (:)
-  - CORRECT: 00:01:23,456 --> 00:01:27,890
-  - WRONG:   00:01:23:456  (colon before ms)
-  - WRONG:   1 00:01:23,456 (index on same line as timestamp)
-- Each subtitle: 1-2 sentences, roughly 5-10 seconds.
-- Do NOT include any explanation, preamble, or code fences.
-- Do NOT translate — output the original language only.
-- Preserve proper nouns, abbreviations, and technical terms exactly as spoken.
-- Speaker Diarization: If multiple speakers are detected, prefix lines with [Speaker A], [Speaker B], etc.
-"""
+    for seg in segments:
+        word = seg["text"].strip()
+        if not word:
+            continue
 
-def _transcribe_with_gemini(
-    media_path: Path,
-    language: str | None,
-    model: str = DEFAULT_GEMINI_MODEL,
-    retries: int = 3,
-    retry_delay: float = 10.0,
-) -> tuple[str, object]:  # type: ignore
-    from google.genai import types  # type: ignore
-    from usage_tracker import signal_backoff  # type: ignore
-    from config import MIME_TYPES, get_truncated_glossary  # type: ignore
+        is_first = not buf_words
+        projected_text = (" ".join(buf_words + [word])).strip()
+        duration = seg["end"] - buf_start
+        sentence_end = word.endswith((".", "?", "!", "...", "。", "？", "！"))
 
-    client = _get_gemini_client()
-    mime_type = MIME_TYPES.get(media_path.suffix.lower(), "video/mp4")
+        if not is_first and (
+            duration > max_duration
+            or len(projected_text) > max_chars
+        ):
+            blocks.append({"text": " ".join(buf_words), "start": buf_start, "end": buf_end})
+            buf_words = [word]
+            buf_start = seg["start"]
+            buf_end = seg["end"]
+        else:
+            if is_first:
+                buf_start = seg["start"]
+            buf_words.append(word)
+            buf_end = seg["end"]
 
-    uploaded_file = None
-    try:
-        for attempt in range(1, retries + 1):
-            try:
-                print(f"  Uploading to Gemini (attempt {attempt}): {media_path.name}...")
-                uploaded_file = client.files.upload(file=str(media_path), config={"mime_type": mime_type})
-                break
-            except Exception as e:
-                if attempt == retries:
-                    from usage_tracker import log_failure  # type: ignore  # type: ignore
-                    log_failure("ASR Upload", media_path.name, str(e))
-                    raise
-                time.sleep(retry_delay)
+        if sentence_end and buf_words:
+            blocks.append({"text": " ".join(buf_words), "start": buf_start, "end": buf_end})
+            buf_words = []
 
-        if not uploaded_file:
-            raise RuntimeError("Failed to obtain uploaded_file from Gemini API")
-            
-        while uploaded_file.state.name == "PROCESSING":  # type: ignore
-            time.sleep(5)
-            uploaded_file = client.files.get(name=uploaded_file.name)  # type: ignore
+    if buf_words:
+        blocks.append({"text": " ".join(buf_words), "start": buf_start, "end": buf_end})
 
-        lang_instr = f"\nThe audio language is {language}. Transcribe in {language}." if language else ""
-        glossary = get_truncated_glossary(50) # Use top 50 terms to keep focus
-        gloss_instr = f"\n\nTechnical context:\n" + ", ".join(f"{k}({v})" for k,v in glossary.items()) if glossary else ""
-        prompt = _GEMINI_ASR_SYSTEM_PROMPT + lang_instr + gloss_instr
+    return blocks
 
-        import random
-        for attempt in range(1, retries + 1):
-            try:
-                from usage_tracker import check_backoff, signal_backoff  # type: ignore
-                check_backoff()
-                response = client.models.generate_content(
-                    model=model,
-                    contents=[types.Part.from_uri(file_uri=uploaded_file.uri, mime_type=uploaded_file.mime_type)],  # type: ignore
-                    config=types.GenerateContentConfig(system_instruction=prompt, temperature=0.0),
-                )
-                return response.text, response.usage_metadata
-            except Exception as e:
-                err_str = str(e).lower()
-                if any(x in err_str for x in ["429", "quota", "overloaded", "503"]):
-                    wait = (retry_delay * (2 ** (attempt - 1))) + random.uniform(0, 1)
-                    signal_backoff(wait + 5)
-                    time.sleep(wait)
-                elif attempt == retries:
-                    raise
-        raise RuntimeError("ASR failed after retries")
-    finally:
-        if uploaded_file:
-            try: client.files.delete(name=uploaded_file.name)  # type: ignore
-            except: pass
+
+def _transcribe_with_qwen3_asr(
+    audio_path: Path,
+    language: Optional[str] = None,
+) -> str:
+    """Transcribe audio locally with Qwen3-ASR-1.7B. Returns SRT-formatted text."""
+    from mlx_qwen3_asr import transcribe  # type: ignore
+
+    print(f"  Running Qwen3-ASR-1.7B on: {audio_path.name}")
+    result = transcribe(
+        audio_path,
+        model=QWEN3_ASR_MODEL,
+        language=language,
+        return_timestamps=True,
+        verbose=False,
+    )
+
+    if not result.segments:
+        return f"1\n00:00:00,000 --> 00:00:01,000\n{result.text.strip()}\n"
+
+    subtitle_blocks = _group_words_into_subtitles(result.segments)
+
+    srt_blocks: list[str] = []
+    for i, block in enumerate(subtitle_blocks, 1):
+        start = _seconds_to_srt_time(block["start"])
+        end = _seconds_to_srt_time(block["end"])
+        srt_blocks.append(f"{i}\n{start} --> {end}\n{block['text']}")
+
+    return "\n\n".join(srt_blocks) + "\n"
 
 # ─────────────────────────── Public API ─────────────────────────────────────
 
@@ -194,10 +175,9 @@ def transcribe_files(
     dry_run: bool = False,
 ) -> dict[Path, Path]:
     from srt_utils import parse_srt, clean_subtitle_text, write_srt  # type: ignore
-    gemini_model = str(os.environ.get("GEMINI_ASR_MODEL", DEFAULT_GEMINI_MODEL))
 
     print(f"\n{'='*60}")
-    print(f"ASR backend: Google Gemini API ({gemini_model}) {'[DRY RUN]' if dry_run else ''}")
+    print(f"ASR backend: Qwen3-ASR-1.7B (local MLX) {'[DRY RUN]' if dry_run else ''}")
     print(f"{'='*60}\n")
 
     results: dict[Path, Path] = {}
@@ -241,14 +221,12 @@ def transcribe_files(
                     continue
                 silence_cache.write_text(stats, encoding="utf-8")
 
-            raw_srt, usage = _transcribe_with_gemini(upload_path, language, gemini_model)
-            if usage:
-                log_usage("ASR", media_path.name, usage.prompt_token_count, usage.candidates_token_count)  # type: ignore
+            raw_srt = _transcribe_with_qwen3_asr(upload_path, language)
 
             if not raw_srt.strip():
                 from usage_tracker import log_failure  # type: ignore
-                log_failure("ASR", media_path.name, "Gemini returned empty transcription")
-                print(f"  [WARNING] Gemini returned EMPTY transcription for {media_path.name}.")
+                log_failure("ASR", media_path.name, "Qwen3-ASR returned empty transcription")
+                print(f"  [WARNING] Qwen3-ASR returned EMPTY transcription for {media_path.name}.")
                 (out_dir / f"{media_path.stem}_asr_debug.txt").write_text("[EMPTY RESPONSE]", encoding="utf-8")
                 continue
 
@@ -284,7 +262,7 @@ def transcribe_files(
                     log_failure("ASR", media_path.name,
                                 f"Suspicious output: {len(entries)} entries for "
                                 f"{duration_sec/60:.1f}min audio (expected ≥{min_expected}). "
-                                "Gemini may have returned garbled SRT format.")
+                                "Qwen3-ASR may have returned garbled SRT format.")
                     print(f"  [WARNING] Only {len(entries)} entries for "
                           f"{duration_sec/60:.1f}min audio — ASR output may be garbled.")
 
@@ -312,15 +290,10 @@ def transcribe_one_video(audio_16khz_path: str, language: Optional[str], working
     a_p = Path(audio_16khz_path)
     w_d = Path(working_directory)
     
-    # 1. Transcribe with AI (Gemini Flash)
-    raw_srt, usage = _transcribe_with_gemini(a_p, language)
-    
-    # 2. Log usage if available
-    if usage:
-        from usage_tracker import log_usage # type: ignore
-        log_usage("ASR", a_p.name, usage.prompt_token_count, usage.candidates_token_count)
-    
-    # 3. Clean and save result
+    # 1. Transcribe locally with Qwen3-ASR-1.7B
+    raw_srt = _transcribe_with_qwen3_asr(a_p, language)
+
+    # 2. Clean and save result
     from srt_utils import parse_srt, clean_subtitle_text, write_srt # type: ignore
     entries = parse_srt(raw_srt)
     for e in entries:
