@@ -1,9 +1,12 @@
 import os
 import threading
 import sys
+from dotenv import load_dotenv
 
 _client_lock = threading.Lock()
 _client_instance = None
+
+load_dotenv()
 
 def get_openrouter_client():
     """Returns a thread-safe singleton OpenRouter client (OpenAI-compatible API)."""
@@ -15,13 +18,6 @@ def get_openrouter_client():
     with _client_lock:
         if _client_instance is None:
             api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-            if not api_key:
-                from pathlib import Path
-                env_path = Path(".env")
-                if env_path.exists():
-                    for line in env_path.read_text().splitlines():
-                        if line.startswith("OPENROUTER_API_KEY="):
-                            api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
 
             if not api_key:
                 print("\n[CRITICAL ERROR] OPENROUTER_API_KEY not found in environment or .env file.")

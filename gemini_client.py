@@ -1,30 +1,26 @@
 import os
 import threading
 import sys
+from dotenv import load_dotenv
 from google import genai
 
 _client_lock = threading.Lock()
 _client_instance = None
 
+load_dotenv()
+
 def get_gemini_client():
     """Returns a thread-safe singleton Gemini client with startup validation."""
     global _client_instance
-    
+
     if _client_instance is not None:
         return _client_instance
-        
+
     with _client_lock:
         if _client_instance is None:
             # 1. Load API Key
             api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-            if not api_key:
-                from pathlib import Path
-                env_path = Path(".env")
-                if env_path.exists():
-                    for line in env_path.read_text().splitlines():
-                        if line.startswith("GEMINI_API_KEY="):
-                            api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
-            
+
             if not api_key:
                 print("\n[CRITICAL ERROR] GEMINI_API_KEY not found in environment or .env file.")
                 sys.exit(1)
