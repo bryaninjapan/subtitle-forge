@@ -17,6 +17,9 @@ output/*
 # OS
 .DS_Store
 
+# Claude Code local settings
+.claude/settings.json
+
 # Local scripts and tests (avoid key exposure)
 test_gemini.py
 process_vids.sh
