@@ -410,7 +410,7 @@ class WorkflowEngine:
             return translate_one_video(**inputs)
 
         elif action == "create_bilingual_srt":
-            from srt_utils import create_bilingual_srt_from_text  # type: ignore
+            from srt_bilingual import create_bilingual_srt_from_text  # type: ignore
 
             return create_bilingual_srt_from_text(**inputs)
 

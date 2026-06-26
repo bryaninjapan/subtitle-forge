@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Any
 
-from media_utils import check_audio_quality # type: ignore
+from audio_quality import check_audio_quality # type: ignore
 
 def extract_audio_and_validate(video_path: str, working_directory: str) -> Dict[str, Any]:
     """Extract audio in standard 16khz mono WAV format for Gemini Flex/Flash."""

@@ -27,12 +27,11 @@ from config import (
 from srt_utils import (
     SrtEntry,
     batch_entries,
-    format_batch_for_translation,
     parse_srt,
-    parse_translation_response,
     split_monolithic_entry,
     write_srt,
 )  # type: ignore
+from srt_translation import format_batch_for_translation, parse_translation_response
 
 # Entries longer than this are almost certainly corrupted ASR output (entire transcript
 # dumped into one subtitle block).  We split them rather than sending to the API.

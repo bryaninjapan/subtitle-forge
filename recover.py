@@ -17,7 +17,8 @@ import shutil
 from pathlib import Path
 
 from config import OUTPUT_DIR # type: ignore
-from srt_utils import parse_srt, write_srt, create_bilingual_srt, convert_srt_to_vtt, clean_subtitle_text, split_monolithic_entry # type: ignore
+from srt_utils import parse_srt, write_srt, convert_srt_to_vtt, clean_subtitle_text, split_monolithic_entry  # type: ignore
+from srt_bilingual import create_bilingual_srt  # type: ignore
 
 # An SRT entry is considered garbled when its text exceeds this character count.
 # A properly formatted subtitle entry is 10-200 chars; anything above 2000 is a
