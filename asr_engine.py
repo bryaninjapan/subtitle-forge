@@ -273,8 +273,8 @@ def transcribe_files(
             # Clean up extracted audio
             if upload_path != media_path and upload_path.exists():
                 try: upload_path.unlink()
-                except: pass
-                
+                except OSError: pass
+
             results[media_path] = srt_path
             print(f"  Saved: {srt_path.name} ({len(entries)} entries)")
         except Exception as e:

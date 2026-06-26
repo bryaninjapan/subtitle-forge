@@ -87,7 +87,9 @@ def load_glossary() -> dict:
             if isinstance(v, dict): result[k] = v.get("val", "")
             else: result[k] = v
         return result
-    except: return {}
+    except Exception:  # type: ignore
+        print("  [WARN] Failed to load glossary, returning empty.")
+        return {}
 
 def get_truncated_glossary(max_terms: int = 50) -> dict:
     full = load_glossary()

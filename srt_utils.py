@@ -177,7 +177,7 @@ def validate_srt_completeness(original_path: Path, translated_path: Path) -> boo
         orig = parse_srt(original_path.read_text(encoding="utf-8"))
         trans = parse_srt(translated_path.read_text(encoding="utf-8"))
         return len(orig) == len(trans)
-    except: return False
+    except Exception: return False
 
 def split_monolithic_entry(entry: SrtEntry, words_per_second: float = 2.2, chunk_words: int = 15) -> list[SrtEntry]:
     """Split a single oversized SRT entry into multiple timed entries with synthetic timestamps.
@@ -241,7 +241,7 @@ def batch_entries(entries: list[SrtEntry], batch_size: int = 50, max_gap: float 
                     nxt_start = _srt_time_to_seconds(entries[i+1].start)
                     if nxt_start - this_end < max_gap and len(current_batch) < (batch_size + 15):
                         should_split = False
-                except: pass
+                except (ValueError, TypeError): pass
         if should_split:
             batches.append(current_batch); current_batch = []
     if current_batch: batches.append(current_batch)
@@ -251,7 +251,7 @@ def _srt_time_to_seconds(t: str) -> float:
     try:
         h, m, s_ms = t.replace(",", ".").split(":")
         return int(h)*3600 + int(m)*60 + float(s_ms)
-    except: return 0.0
+    except (ValueError, AttributeError): return 0.0
 
 def clean_subtitle_text(text: str) -> str:
     """Clean subtitle text: remove only SDH noise, NOT speaker labels or real content."""
@@ -305,7 +305,7 @@ def parse_translation_response(response: str, batch: list[SrtEntry]) -> list[str
             elif isinstance(items, dict):
                 for k, v in items.items():
                     try: translations[int(k)] = str(v).strip()
-                    except: pass
+                    except (ValueError, TypeError): pass
     except Exception as e:
         print(f"  [DEBUG] JSON Parse failed: {e}. Attempting regex recovery.")
 

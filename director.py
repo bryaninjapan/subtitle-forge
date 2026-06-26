@@ -76,7 +76,7 @@ class StateStore:
     def _load(self) -> Dict[str, Any]:
         if self.path.exists():
             try: return json.loads(self.path.read_text(encoding="utf-8"))
-            except: pass
+            except (json.JSONDecodeError, OSError): pass
         return {"agents": {}, "outputs": {}}
 
     def save(self):

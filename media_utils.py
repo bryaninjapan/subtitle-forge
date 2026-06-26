@@ -15,7 +15,7 @@ def get_media_duration_sec(path: Path) -> float:
         )
         if out.returncode == 0 and out.stdout.strip():
             return float(out.stdout.strip())
-    except: pass
+    except OSError: pass
     return 0.0
 
 def get_file_hash(path: Path) -> str:
@@ -39,7 +39,7 @@ def burn_subtitles(video_path: Path, subtitle_path: Path, output_path: Path):
     try:
         subprocess.run(cmd, check=True, capture_output=True)
         return True
-    except: return False
+    except OSError: return False
 
 def check_audio_quality(media_path: Path) -> str:
     from config import OUTPUT_DIR
@@ -57,6 +57,6 @@ def check_audio_quality(media_path: Path) -> str:
         )
         client.files.delete(name=up.name); tmp_audio.unlink()
         return res.text.strip()
-    except:
+    except (OSError, KeyError):
         if tmp_audio.exists(): tmp_audio.unlink()
         return "Unknown"

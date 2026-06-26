@@ -22,7 +22,7 @@ def load_glossary_raw() -> dict:
             if isinstance(v, dict): standardized[k] = v
             else: standardized[k] = {"val": v, "hits": 0}
         return standardized
-    except: return {}
+    except (json.JSONDecodeError, OSError): return {}
 
 def save_glossary_raw(data: dict):
     """Save sorted raw dictionary."""
@@ -63,7 +63,7 @@ def extract_terms_with_ai(transcript_text: str, current_glossary: dict) -> dict:
             config=types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
         )
         return json.loads(res.text)
-    except: return {}
+    except (json.JSONDecodeError, OSError): return {}
 
 def update_glossary_auto(srt_path: Path):
     with _glossary_lock:
