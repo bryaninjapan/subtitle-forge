@@ -1,5 +1,4 @@
 import os
-import shutil
 from pathlib import Path
 
 def wipe_stale_outputs(output_dir: Path):

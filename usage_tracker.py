@@ -2,7 +2,6 @@ import json
 import time
 import threading
 import sys
-from pathlib import Path
 from config import (  # type: ignore
     BASE_DIR, 
     COST_INPUT_FLASH, COST_OUTPUT_FLASH,

@@ -24,7 +24,6 @@ from config import (
     STYLE_TEMPLATES,
     ENABLE_QA_SCORING,
 )  # type: ignore
-import json
 from srt_utils import (
     SrtEntry,
     batch_entries,

@@ -1,5 +1,4 @@
 from flask import Flask, render_template_string, send_from_directory  # type: ignore
-import os
 import json
 from pathlib import Path
 

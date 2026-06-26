@@ -1,6 +1,5 @@
 """Global configuration for Subtitle Forge."""
 
-import os
 import yaml  # type: ignore
 from pathlib import Path
 from functools import lru_cache

@@ -1,6 +1,4 @@
 import genanki
-import os
-import json
 from pathlib import Path
 
 def export_to_anki(glossary: dict, output_path: Path):

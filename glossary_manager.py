@@ -2,7 +2,6 @@ import json
 import os
 import threading
 from pathlib import Path
-from google import genai
 from google.genai import types
 from config import DEFAULT_GEMINI_MODEL, GLOSSARY_PATH, load_glossary
 from gemini_client import get_gemini_client

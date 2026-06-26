@@ -1,6 +1,5 @@
-import pytest
 from pathlib import Path
-from srt_utils import parse_srt, SrtEntry, clean_subtitle_text
+from srt_utils import parse_srt, clean_subtitle_text
 
 def test_parse_srt():
     content = "1\n00:00:01,000 --> 00:00:02,000\nHello World\n\n2\n00:00:03,000 --> 00:00:04,500\nTest line"

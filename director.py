@@ -7,9 +7,6 @@ of specialized agents on media files.
 """
 
 import json
-import logging
-import os
-import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
