@@ -50,19 +50,8 @@ def generate_study_notes(working_dir: Path, transcript_text: str, frame_paths: l
     if len(transcript_text) > MAX_TRANSCRIPT_CHARS:
         truncated += "\n\n[transcript truncated for length]"
 
-    system_instruction = """
-You are an expert CFA (Chartered Financial Analyst) tutor.
-Your task is to create comprehensive, well-structured study notes in Simplified Chinese.
-
-Please integrate information from the images (slides, charts) with the transcript text to provide a complete picture.
-
-Sections to include:
-1. **课程摘要 (Summary)**: A high-level overview of the video's content.
-2. **核心概念 (Key Concepts)**: Detailed explanations of professional terms and theories mentioned. Reference the slides if they contain definitions or charts.
-3. **重要公式 (Important Formulas)**: List any formulas mentioned with variable definitions.
-4. **考试重点 (Exam Focus)**: Specific tips or areas that are likely to appear on the CFA exam.
-5. **中英术语对照 (Terminology Table)**: A table of technical terms used in the video.
-"""
+    from config import STUDY_NOTES_PROMPT
+    system_instruction = STUDY_NOTES_PROMPT
 
     prompt = f"### Transcript:\n{truncated}"
     contents = [prompt]

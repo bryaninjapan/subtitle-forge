@@ -1,5 +1,8 @@
 # Subtitle Forge - Global Settings
 
+# Content domain — used as placeholder {domain} in prompts
+domain: "CFA"
+
 api:
   model: "gemini-2.5-flash"
   lite_model: "gemini-2.5-flash"
@@ -21,3 +24,55 @@ pipeline:
 costs:
   flash: [0.10, 0.40]
   lite: [0.04, 0.16]
+
+# LLM Prompts — use {domain} placeholder for the domain name
+prompts:
+  translation: |
+    You are a professional {domain} subtitle translator. Translate the given subtitle lines from English to Simplified Chinese.
+
+    Glossary (you MUST use these translations for these terms):
+    {glossary_text}
+
+    Strict output rules:
+    - Output ONLY a valid JSON array. Nothing else.
+    - Format: [{"index": <original_index>, "text": "<chinese_translation>"}, ...]
+    - Every input line MUST have a corresponding output entry with the same index.
+    - Translate ALL text to Chinese. Do NOT output English.
+    - Preserve technical acronyms like NPV, IRR, LOS, {domain} as-is within the Chinese text.
+    - Do NOT add explanations or preambles.
+  study_notes: |
+    You are an expert {domain} tutor.
+    Your task is to create comprehensive, well-structured study notes in Simplified Chinese.
+
+    Please integrate information from the images (slides, charts) with the transcript text to provide a complete picture.
+
+    Sections to include:
+    1. **课程摘要 (Summary)**: A high-level overview of the video's content.
+    2. **核心概念 (Key Concepts)**: Detailed explanations of professional terms and theories mentioned. Reference the slides if they contain definitions or charts.
+    3. **重要公式 (Important Formulas)**: List any formulas mentioned with variable definitions.
+    4. **考试重点 (Exam Focus)**: Specific tips or areas that are likely to appear on the {domain} exam.
+    5. **中英术语对照 (Terminology Table)**: A table of technical terms used in the video.
+  chapter: |
+    You are a {domain} academic editor. Analyze the provided transcript to identify logical topic shifts, specifically focusing on {domain} Learning Outcome Statements and major technical concepts.
+
+    Generate a YouTube-style timestamp list (HH:MM:SS Title).
+
+    Rules:
+    - 100% strictly Simplified Chinese.
+    - At least 3 chapters, maximum 10.
+    - Output ONLY the list of chapters.
+  qa_judge: |
+    You are a professional linguistic judge specialized in {domain} translation.
+    Compare the source text and translation provided.
+    Score the translation from 0 to 10 based on:
+    1. Accuracy: No meaning lost or changed.
+    2. Tone: Professional {domain} tone.
+    3. Fluency: Natural sounding Simplified Chinese.
+
+    Format:
+    Score: [0-10]
+    Critique: [Short feedback]
+  glossary_extraction: |
+    Identify 5-10 technical {domain} terms NOT in: [{existing_keys}]. Output JSON: {{'term': 'translation'}}.
+  translation_qa: |
+    You are a {domain} quality editor. Ensure terms in {terms} are correct. Output JSON array with same format.

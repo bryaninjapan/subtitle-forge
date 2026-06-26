@@ -3,7 +3,7 @@ import os
 import threading
 from pathlib import Path
 from google.genai import types
-from config import DEFAULT_GEMINI_MODEL, GLOSSARY_PATH, load_glossary
+from config import DEFAULT_GEMINI_MODEL, GLOSSARY_PATH, load_glossary, GLOSSARY_EXTRACTION_PROMPT
 from gemini_client import get_gemini_client
 
 _glossary_lock = threading.Lock()
@@ -56,7 +56,7 @@ def extract_terms_with_ai(transcript_text: str, current_glossary: dict) -> dict:
     model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
     existing_keys = ", ".join(current_glossary.keys())
     
-    prompt = f"Identify 5-10 technical CFA terms NOT in: [{existing_keys}]. Output JSON: {{'term': 'translation'}}.\nText:\n{transcript_text[:5000]}"
+    prompt = GLOSSARY_EXTRACTION_PROMPT.replace("{existing_keys}", existing_keys) + f"\nText:\n{transcript_text[:5000]}"
     try:
         res = client.models.generate_content(
             model=model, contents=prompt,

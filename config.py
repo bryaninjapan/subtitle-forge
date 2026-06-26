@@ -46,6 +46,24 @@ costs_c: dict[str, Any] = _cfg.get("costs", {})
 COST_INPUT_FLASH, COST_OUTPUT_FLASH = costs_c.get("flash", [0.10, 0.40])
 COST_INPUT_LITE, COST_OUTPUT_LITE = costs_c.get("lite", [0.04, 0.16])
 
+# --- Domain & Prompts ---
+DOMAIN = _cfg.get("domain", "CFA")
+_prompts_c: dict[str, Any] = _cfg.get("prompts", {})
+
+def _get_prompt(key: str, default: str = "") -> str:
+    raw = _prompts_c.get(key, default)
+    return raw.replace("{domain}", DOMAIN)
+
+TRANSLATION_SYSTEM_PROMPT = _get_prompt(
+    "translation",
+    "You are a professional {domain} subtitle translator. Translate from English to Simplified Chinese."
+)
+STUDY_NOTES_PROMPT = _get_prompt("study_notes")
+CHAPTER_PROMPT = _get_prompt("chapter")
+QA_JUDGE_PROMPT = _get_prompt("qa_judge")
+GLOSSARY_EXTRACTION_PROMPT = _get_prompt("glossary_extraction")
+TRANSLATION_QA_PROMPT_TMPL = _get_prompt("translation_qa")
+
 # --- Media Settings ---
 AUDIO_SAMPLE_RATE = 16000
 SILENCE_THRESHOLD = -50

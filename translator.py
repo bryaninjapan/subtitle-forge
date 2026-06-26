@@ -103,10 +103,9 @@ def _translate_batch(
                 return response_text, base_usage
 
             try:
-                qa_instr = (
-                    f"You are a CFA quality editor. Ensure terms in "
-                    f"{list(filtered_glossary.keys())} are correct. "
-                    f"Output JSON array with same format."
+                from config import TRANSLATION_QA_PROMPT_TMPL  # type: ignore
+                qa_instr = TRANSLATION_QA_PROMPT_TMPL.replace(
+                    "{terms}", str(list(filtered_glossary.keys()))
                 )
                 qa_res = client.chat.completions.create(
                     model=model,

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from openrouter_client import get_openrouter_client  # type: ignore
-from config import OPENROUTER_TEXT_MODEL  # type: ignore
+from config import OPENROUTER_TEXT_MODEL, CHAPTER_PROMPT  # type: ignore
 
 def generate_video_chapters(working_dir: Path, video_name: str, transcript_text: str):
     """Analyze transcript to identify topic shifts (LOS) and generate chapters."""
@@ -13,21 +13,7 @@ def generate_video_chapters(working_dir: Path, video_name: str, transcript_text:
     try:
         truncated = transcript_text[0:120000]  # type: ignore[misc]
 
-        system_instruction = """
-You are a CFA academic editor. Analyze the provided transcript to identify logical topic shifts, specifically focusing on CFA Learning Outcome Statements (LOS A, LOS B, etc.) and major technical concepts.
-
-Generate a YouTube-style timestamp list (HH:MM:SS Title).
-Example:
-00:00:00 Introduction & Overview
-00:05:30 [LOS A] Ethics and Trust
-00:15:20 [LOS B] Code of Ethics
-00:45:10 Conclusion & EOCQ
-
-Rules:
-- 100% strictly Simplified Chinese.
-- At least 3 chapters, maximum 10.
-- Output ONLY the list of chapters.
-"""
+        system_instruction = CHAPTER_PROMPT
 
         response = client.chat.completions.create(
             model=model,
