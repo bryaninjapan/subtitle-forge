@@ -330,6 +330,50 @@ def test_asr_backend_switch_wired():
     assert "ASR_API_MODEL" in src
 
 
+# ── server.py new endpoints ─────────────────────────────────────────────
+
+
+def test_server_settings_get():
+    """GET /settings returns JSON (empty or settings content)."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/settings")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert isinstance(data, dict)
+
+
+def test_server_settings_post():
+    """POST /settings accepts and merges settings."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.post("/settings", json={"test_key": "test_val"})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "ok"
+
+
+def test_server_cancel_unknown_task():
+    """POST /cancel/<id> returns 404 for unknown task."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.post("/cancel/nonexistent_task")
+        assert resp.status_code == 404
+        assert "error" in resp.get_json()
+
+
+def test_server_output_file_not_found():
+    """GET /outputs/<path> returns 404 for missing files."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/outputs/nonexistent/file.txt")
+        assert resp.status_code in (404, 403)
+
+
 # ── server.py routes ─────────────────────────────────────────────────────
 
 

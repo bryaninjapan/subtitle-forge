@@ -88,3 +88,21 @@ subtitle-forge/
 - System tray + Dashboard + Terminal: 2-3 天
 - 打包 + 安裝腳本: 1-2 天
 - **總計: ~3-4 週**
+
+## 🔒 執行決策 (2026-07-17)
+
+### Part A 執行方式
+- **A1→A2→A3→A4→A6→A7** 串接，一個做完下一步
+- **A5 (New API endpoints)** 與 A1-A2 平行開發（不相依）
+
+### Part B MVP 範圍
+- **核心 5 元件**: api.ts + DropZone + SettingsPanel + ProgressDisplay + TaskHistory
+- **Phase 2**: BatchManager, VideoPlayer, SubtitleEditor, Dashboard, TerminalEmbed
+
+### AI Studio 交接
+- 先寫 `desktop/spec.md` 包含: API contract, Component props, UI layout, Simple/Advanced 設計, TypeScript types
+- AI Studio 生成後 merge 進 `desktop/src/`
+
+### Distribution
+- **方案 A**: 使用者先裝 Python + venv，Tauri 負責前端 .app
+- 安裝腳本輔助: `curl ... | bash` 自動建 venv + install deps

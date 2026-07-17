@@ -17,10 +17,13 @@ import uuid
 from pathlib import Path
 
 from flask import Flask, jsonify, redirect, render_template_string, request, url_for  # type: ignore
+from flask_cors import CORS  # type: ignore
 from werkzeug.utils import secure_filename  # type: ignore
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24).hex()
+# Enable CORS for Tauri dev server
+CORS(app, origins=["http://localhost:1420", "tauri://localhost", "https://tauri.localhost"])
 # Limit upload size to 4 GB (single file)
 app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024 * 1024
 
@@ -120,6 +123,66 @@ def get_outputs():
                 files = [f.name for f in d.iterdir() if f.suffix in {".srt", ".zh.srt", ".bilingual.srt", ".vtt", ".txt", ".md"}]
                 folders.append({"name": d.name, "files": sorted(files)})
     return jsonify(folders)
+
+
+@app.route("/outputs/<path:filepath>")
+def get_output_file(filepath: str):
+    """Serve a file from the output directory."""
+    file_path = (OUTPUT_DIR / filepath).resolve()
+    # Security: ensure the resolved path is within OUTPUT_DIR
+    if not str(file_path).startswith(str(OUTPUT_DIR.resolve())):
+        return jsonify({"error": "Access denied"}), 403
+    if not file_path.exists() or not file_path.is_file():
+        return jsonify({"error": "File not found"}), 404
+    from flask import send_file  # type: ignore
+    return send_file(str(file_path))
+
+
+@app.route("/settings", methods=["GET", "POST"])
+def handle_settings():
+    """GET: read settings.yaml.  POST: write settings.yaml."""
+    settings_path = BASE_DIR / "settings.yaml"
+    import yaml  # type: ignore
+
+    if request.method == "GET":
+        if not settings_path.exists():
+            return jsonify({})
+        with open(settings_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return jsonify(data)
+
+    # POST: merge provided keys into settings.yaml
+    updates = request.get_json(force=True, silent=True) or {}
+    current = {}
+    if settings_path.exists():
+        with open(settings_path, "r", encoding="utf-8") as f:
+            current = yaml.safe_load(f) or {}
+
+    # Deep merge
+    def deep_merge(base: dict, overrides: dict) -> dict:
+        result = dict(base)
+        for k, v in overrides.items():
+            if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+                result[k] = deep_merge(result[k], v)
+            else:
+                result[k] = v
+        return result
+
+    merged = deep_merge(current, updates)
+    with open(settings_path, "w", encoding="utf-8") as f:
+        yaml.dump(merged, f, allow_unicode=True, default_flow_style=False)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/cancel/<task_id>", methods=["POST"])
+def cancel_task(task_id: str):
+    """Mark a running task as cancelled."""
+    with _progress_lock:
+        if task_id in progress_store:
+            progress_store[task_id]["stage"] = "cancelled"
+            progress_store[task_id]["message"] = "Cancelled by user"
+            return jsonify({"status": "cancelled", "task_id": task_id})
+    return jsonify({"error": "Task not found", "task_id": task_id}), 404
 
 
 @app.route("/upload", methods=["POST"])

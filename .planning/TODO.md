@@ -1,14 +1,11 @@
 # TODO — Subtitle Forge
 
-> Gaps identified during Milestone 3 (UX-2) dependency analysis.
 > Added: 2026-07-17
+> Updated: 2026-07-17 (G1 done, G7 refined)
 
 ## 🔴 HIGH (UX-2 前置條件)
 
-- [ ] **G1: Phase A4 — ASR model 路徑移至 settings.yaml**
-  - 現在 `QWEN3_ASR_MODEL` 硬編碼在 `asr_engine.py:19`
-  - UX-2 設定面板需要讀寫這個值才能生效
-  - 建議納入 UX-2 Task 0 或 T2 Python API 一起做
+- [x] **G1: Phase A4 — ASR model 路徑移至 settings.yaml** ✅ Done
 
 ## 🟡 MEDIUM (UX-2 需納入規劃)
 
@@ -40,7 +37,8 @@
   - Tauri auto-updater 基於 GitHub Releases
   - UX-2 穩定後再實作
 
-- [ ] **G7: Cross-platform (Windows/Linux)**
-  - MLX 是 Apple Silicon only
-  - Windows 需 OpenVINO 或 Vulkan backend (參考 QwenASRMiniTool)
-  - 先鎖定 macOS only
+- [ ] **G8: Windows ASR Backend**
+  - MLX 是 Apple Silicon only → Windows 無法用 Local ASR
+  - 需要: faster-whisper (CUDA/CPU) 或 QwenASRMiniTool 的 OpenVINO INT8 backend
+  - Scope: 新增一個 Windows 專用的 ASR backend class
+  - 優先度: LOW（目前 Windows 用戶可走 API ASR）
