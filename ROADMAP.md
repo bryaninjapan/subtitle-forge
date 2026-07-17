@@ -85,11 +85,55 @@
 
 ## Backlog (No plan yet)
 
-| Phase | Description | Priority |
-|-------|-------------|----------|
-| **Subtitle Editor** | 字幕列表可編輯、校正時間軸、即時預覽播放 | Low |
-| **Audio/Video Player** | 精美波形播放器、逐字跳播、速度控制、播放進度同步 | Low |
-| UX-3 — Polish | Notifications, settings panel, output preview | Low |
-| recover.py refactoring | Split 396-line recovery engine | Low |
-| Testing expansion | Add tests for remaining modules | Low |
-| Feature branch → main merge | Merge feature/local-asr-qwen3 into main | ⏸️ On hold |
+| Phase | Description | Est. | Priority |
+|-------|-------------|------|----------|
+| Subtitle Editor | 字幕列表可編輯、校正時間軸、即時預覽播放 | M8 | Low |
+| Audio/Video Player | 精美波形播放器、逐字跳播、速度控制、播放進度同步 | M8 | Low |
+| UX-3 — Polish | Notifications, settings panel, output preview | M7 | Low |
+| Frontend tests (Vitest + MSW) | Component + integration tests | M7 | Low |
+| Backend testing expansion | More test coverage | M7 | Low |
+| Error/Loading/Empty states | Polish component status states | M7 | Low |
+| Onboarding UX (G4) | Welcome screen + model download guide | M9 | Low |
+| Windows ASR Backend (G8) | faster-whisper/OpenVINO | M9 | Low |
+| recover.py refactoring | Split 396-line recovery engine | M9 | Low |
+| Version update (G6) | Tauri auto-updater | M9 | Low |
+| Feature branch → main merge | Merge into main | Final | ⏸️ On hold |
+
+## 📅 Planned Milestones
+
+## ✅ M7: Polish & Quality (Complete 2026-07-17)
+**Goal:** 打磨前端品質 — 統一的載入/錯誤/空白狀態、前端測試基礎、UI 細節優化。
+
+| Phase | Status |
+|-------|--------|
+| P1 | Error/Loading/Empty states (G5) | ✅ |
+| P2 | Frontend tests (Vitest + MSW) (G3) | ✅ |
+| P3 | Backend testing expansion | ✅ |
+| P4 | UX-3 Polish (notifications, settings panel, output preview) | ✅ |
+| Code review | ✅ Passed |
+| Tests | 97 Python + 4 Vitest + 0 TS errors |
+
+### M8: Feature Completion (~2 週)
+**Goal:** 補上參考工具最關鍵的遺漏功能 — 字幕編輯 + 精美播放器。
+
+| Phase | Description |
+|-------|-------------|
+| P1 | Subtitle Editor |
+| P2 | Audio/Video Player |
+
+### M9: Platform & Infrastructure (~2 週)
+**Goal:** 跨平台支援 + 技術債清理 + 版本更新機制。
+
+| Phase | Description |
+|-------|-------------|
+| P1 | Windows ASR Backend (G8) |
+| P2 | recover.py refactoring |
+| P3 | Onboarding UX (G4) |
+| P4 | Version update (G6) |
+
+### Final: Merge feature → main
+**Goal:** 穩定版本合併到主分支。
+
+| Phase | Description |
+|-------|-------------|
+| P1 | Resolve conflicts, verify build, merge to main |

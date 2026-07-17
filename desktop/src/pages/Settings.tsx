@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import type { AppSettings } from '../types';
+import { LoadingSpinner, ErrorBanner } from '../components/SharedStates';
+import { toast } from '../components/Toast';
 
 export default function Settings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savingState, setSavingState] = useState<Record<string, boolean>>({});
 
   // UI-only settings states
@@ -19,11 +22,12 @@ export default function Settings() {
   const fetchSettings = async () => {
     try {
       setLoading(true);
+      setErrorMsg(null);
       const data = await api.getSettings();
       setSettings(data);
     } catch (err) {
-      console.warn('API getSettings unreachable, loading premium local high-fidelity simulated settings.', err);
-      // Fallback local state setting values
+      console.warn('API getSettings unreachable...', err);
+      setErrorMsg('無法連接到後端伺服器 (localhost:5000)');
       const fallbackSettings: AppSettings = {
         pipeline: {
           asr_backend: 'local',
@@ -48,6 +52,7 @@ export default function Settings() {
     setSavingState((prev) => ({ ...prev, [fieldName]: true }));
     try {
       await api.updateSettings(updatedSettings);
+      toast('success', '設定已儲存');
     } catch (err) {
       console.warn(`API updateSettings failed for ${fieldName}, updated local state only.`, err);
     } finally {
@@ -108,6 +113,9 @@ export default function Settings() {
     );
   }
 
+  if (loading && !settings) return <LoadingSpinner message="載入設定中..." />;
+  if (errorMsg && !settings) return <ErrorBanner message={errorMsg} onRetry={fetchSettings} />;
+
   const pipeline = settings?.pipeline || {
     asr_backend: 'local' as const,
     vad_threshold: 0.35,
@@ -118,13 +126,9 @@ export default function Settings() {
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      
       {/* Title */}
       <div>
         <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>設定</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>
-          調校語音前置音訊過濾、翻譯語系對照表與整合性外部元件。
-        </p>
       </div>
 
       {/* Settings Form Wrapper */}

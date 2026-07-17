@@ -18,7 +18,7 @@ openrouter:
   text_model: deepseek/deepseek-chat-v3-0324
 pipeline:
   asr_aligner_model: Qwen/Qwen3-ForcedAligner-0.6B
-  asr_backend: local
+  asr_backend: api
   asr_concurrent: 2
   asr_diarize: false
   asr_diarize_num_speakers: null

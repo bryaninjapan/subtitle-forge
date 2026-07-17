@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import './styles/global.css';
 import type { Page } from './types';
+import { ToastContainer } from './components/Toast';
 
 import AudioFile from './pages/AudioFile';
 import Batch from './pages/Batch';
@@ -132,6 +133,7 @@ export default function App() {
       <main id="main-content" style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
         {renderContent()}
       </main>
+      <ToastContainer />
     </div>
   );
 }

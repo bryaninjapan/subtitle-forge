@@ -530,6 +530,51 @@ def test_endpoint_start_stop():
 # ── server.py routes ─────────────────────────────────────────────────────
 
 
+def test_server_settings_read():
+    """GET /settings returns settings as JSON."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/settings")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "pipeline" in data
+
+
+def test_server_settings_write():
+    """POST /settings updates settings."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.post(
+            "/settings",
+            json={"pipeline": {"asr_backend": "api"}},
+        )
+        assert resp.status_code == 200
+
+
+def test_server_waveform_json_format():
+    """GET /waveform/<id> returns JSON with peaks or error."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/waveform/unknown_task_xyz")
+        data = resp.get_json()
+        # Returns 200 with empty peaks or 404 for unknown task
+        assert "peaks" in data or "error" in data
+
+
+def test_server_endpoint_qrcode_format():
+    """GET /endpoint/qrcode returns PNG with correct size."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/endpoint/qrcode")
+        assert resp.status_code == 200
+        assert resp.content_type == "image/png"
+        assert len(resp.data) > 100
+
+
 def test_server_index_returns_200():
     """GET / returns 200 with HTML content."""
     from server import app

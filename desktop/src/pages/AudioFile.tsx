@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import type { TaskProgress, WordTimestamp } from '../types';
+import { toast } from '../components/Toast';
 
 interface SubtitleSegment {
   text: string;
@@ -309,9 +310,11 @@ export default function AudioFile() {
         if (taskProgress && active) {
           setProgress(taskProgress);
           if (taskProgress.stage === 'done') {
+            toast('success', '轉換完成！');
             fetchResults(taskId);
             active = false;
           } else if (taskProgress.stage === 'error') {
+            toast('error', taskProgress.message || '轉換失敗');
             setErrorMsg(taskProgress.message || '轉換過程中發生錯誤');
             active = false;
           }
@@ -1053,6 +1056,40 @@ export default function AudioFile() {
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Output Preview — raw SRT */}
+      {segments.length > 0 && (
+        <div
+          style={{
+            backgroundColor: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            padding: '16px',
+          }}
+        >
+          <h3 style={{ fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>
+            原始字幕 (SRT)
+          </h3>
+          <pre
+            style={{
+              fontFamily: 'monospace',
+              fontSize: '12px',
+              lineHeight: '1.6',
+              color: 'var(--text-secondary)',
+              backgroundColor: 'var(--bg-primary)',
+              padding: '12px',
+              borderRadius: 'var(--radius)',
+              overflow: 'auto',
+              maxHeight: '200px',
+              margin: 0,
+            }}
+          >
+            {segments.map((seg, i) => (
+              i + 1 + '\n' + formatTimeSRT(seg.start) + ' --> ' + formatTimeSRT(seg.end) + '\n' + seg.text + '\n\n'
+            )).join('')}
+          </pre>
         </div>
       )}
     </div>
