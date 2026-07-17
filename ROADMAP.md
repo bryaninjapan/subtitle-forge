@@ -113,23 +113,25 @@
 | Code review | ✅ Passed |
 | Tests | 97 Python + 4 Vitest + 0 TS errors |
 
-### M8: Feature Completion (~2 週)
+## ✅ M8: Feature Completion (Complete 2026-07-17)
 **Goal:** 補上參考工具最關鍵的遺漏功能 — 字幕編輯 + 精美播放器。
 
-| Phase | Description |
-|-------|-------------|
-| P1 | Subtitle Editor |
-| P2 | Audio/Video Player |
+| Phase | Status |
+|-------|--------|
+| P1 — Subtitle Editor | ✅ |
+| P2 — Audio/Video Player | ✅ |
+| Inline editing, speed control, keyboard shortcuts | ✅ |
+| TypeScript 0 errors, Python 97 tests | ✅ |
 
-### M9: Platform & Infrastructure (~2 週)
+## 🔜 M9: Platform & Infrastructure (~2 週)
 **Goal:** 跨平台支援 + 技術債清理 + 版本更新機制。
 
-| Phase | Description |
-|-------|-------------|
-| P1 | Windows ASR Backend (G8) |
-| P2 | recover.py refactoring |
-| P3 | Onboarding UX (G4) |
-| P4 | Version update (G6) |
+| Phase | Description | Est. |
+|-------|-------------|------|
+| P1 | Windows ASR Backend (G8) | 1 週 |
+| P2 | recover.py refactoring | 2 天 |
+| P3 | Onboarding UX (G4) | 2 天 |
+| P4 | Version update (G6) | 2 天 |
 
 ### Final: Merge feature → main
 **Goal:** 穩定版本合併到主分支。

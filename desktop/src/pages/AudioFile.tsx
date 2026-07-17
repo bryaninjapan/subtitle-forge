@@ -23,6 +23,14 @@ export default function AudioFile() {
   const [prompt, setPrompt] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Subtitle editing
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editText, setEditText] = useState<string>('');
+  const [editedTexts, setEditedTexts] = useState<Record<number, string>>({});
+
+  // Playback speed
+  const [playbackRate, setPlaybackRate] = useState<number>(1);
+
   // Audio Playback State
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -112,6 +120,45 @@ export default function AudioFile() {
       setCurrentTime(seconds);
     }
   };
+
+  // Sync playback rate
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (audioRef.current) {
+          if (audioRef.current.paused) audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+          else { audioRef.current.pause(); setIsPlaying(false); }
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // Save edited subtitle
+  const handleSaveEdit = (idx: number) => {
+    if (editText.trim()) {
+      setEditedTexts(prev => ({ ...prev, [idx]: editText.trim() }));
+    }
+    setEditingIdx(null);
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    if (e.key === 'Enter') handleSaveEdit(idx);
+    if (e.key === 'Escape') setEditingIdx(null);
+  };
+
+  // Playback speed options
+  const speedOptions = [0.5, 1, 1.5, 2];
 
   // Drag and Drop support
   const handleDragOver = (e: React.DragEvent) => {
@@ -356,9 +403,10 @@ export default function AudioFile() {
 
     let srtContent = '';
     segments.forEach((seg, index) => {
+      const text = editedTexts[index] || seg.text;
       srtContent += `${index + 1}\n`;
       srtContent += `${formatTimeSRT(seg.start)} --> ${formatTimeSRT(seg.end)}\n`;
-      srtContent += `${seg.text}\n\n`;
+      srtContent += `${text}\n\n`;
     });
 
     const blob = new Blob([srtContent], { type: 'text/srt;charset=utf-8;' });
@@ -958,6 +1006,25 @@ export default function AudioFile() {
               >
                 🎤 輸入
               </button>
+              {/* Speed control */}
+              {speedOptions.map(speed => (
+                <button
+                  key={speed}
+                  onClick={() => setPlaybackRate(speed)}
+                  style={{
+                    backgroundColor: playbackRate === speed ? 'var(--accent)' : 'var(--bg-hover)',
+                    color: playbackRate === speed ? '#ffffff' : 'var(--text-primary)',
+                    border: 'none',
+                    padding: '6px 10px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: playbackRate === speed ? '600' : '400',
+                  }}
+                >
+                  {speed}x
+                </button>
+              ))}
             </div>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
               提示：點擊上方波形、字幕或單詞即可跳播
@@ -1042,16 +1109,67 @@ export default function AudioFile() {
                     >
                       {formatTimeDisplay(seg.start)} → {formatTimeDisplay(seg.end)}
                     </span>
-                    <span
-                      style={{
-                        fontSize: '14px',
-                        fontWeight: isActive ? '600' : '400',
-                        color: isActive ? '#ffffff' : 'var(--text-primary)',
-                      }}
-                    >
-                      {seg.text}
-                    </span>
-                  </div>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {editingIdx === idx ? (
+                        <input
+                          autoFocus
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onBlur={() => handleSaveEdit(idx)}
+                          onKeyDown={(e) => handleEditKeyDown(e, idx)}
+                          style={{
+                            flex: 1,
+                            background: 'var(--bg-hover)',
+                            border: '1px solid var(--accent)',
+                            borderRadius: '4px',
+                            color: 'var(--text-primary)',
+                            padding: '4px 8px',
+                            fontSize: '14px',
+                            outline: 'none',
+                          }}
+                        />
+                      ) : (
+                        <span
+                          onClick={() => {
+                            setEditingIdx(idx);
+                            setEditText(editedTexts[idx] || seg.text);
+                          }}
+                          onDoubleClick={() => {
+                            setEditingIdx(idx);
+                            setEditText(editedTexts[idx] || seg.text);
+                          }}
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: isActive ? '600' : '400',
+                            color: isActive ? '#ffffff' : 'var(--text-primary)',
+                            cursor: 'text',
+                            padding: '2px 4px',
+                            borderRadius: '2px',
+                          }}
+                        >
+                          {editedTexts[idx] || seg.text}
+                        </span>
+                        )}
+                        </div>
+                        {/* Restore original button */}
+                        {editingIdx === null && Object.keys(editedTexts).length > 0 && (
+                        <button
+                        onClick={() => setEditedTexts({})}
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          color: 'var(--text-muted)',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          padding: '2px 6px',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title="恢復原始字幕"
+                        >
+                        ↩ 還原
+                        </button>
+                        )}
+                        </div>
                 );
               })}
             </div>
