@@ -34,6 +34,13 @@ OPENROUTER_TEXT_MODEL = or_c.get("text_model", "qwen/qwen-2.5-72b-instruct:free"
 
 pipe_c: dict[str, Any] = _cfg.get("pipeline", {})
 ASR_MAX_CONCURRENT = pipe_c.get("asr_concurrent", 2)
+ASR_MODEL = pipe_c.get("asr_model", "Qwen/Qwen3-ASR-0.6B")
+ASR_ALIGNER_MODEL = pipe_c.get("asr_aligner_model", "Qwen/Qwen3-ForcedAligner-0.6B")
+ASR_DIARIZE = pipe_c.get("asr_diarize", False)
+ASR_DIARIZE_NUM_SPEAKERS = pipe_c.get("asr_diarize_num_speakers", None)
+ASR_USE_DRAFT = pipe_c.get("asr_use_draft", False)
+ASR_HOTWORDS = pipe_c.get("asr_hotwords", True)
+ASR_BACKEND = pipe_c.get("asr_backend", "local")
 POST_PROC_MAX_CONCURRENT = pipe_c.get("post_proc_concurrent", 4)
 TRANSLATION_MAX_CONCURRENT = POST_PROC_MAX_CONCURRENT # Aliasing for compatibility
 TRANSLATION_BATCH_SIZE = pipe_c.get("translation_batch_size", 50)
@@ -120,3 +127,11 @@ MIME_TYPES = {
     ".mp4": "video/mp4", ".mov": "video/quicktime", ".mkv": "video/x-matroska",
     ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4"
 }
+
+
+# ── ASR API settings ─────────────────────────────────────────────────────
+
+asr_api_c: dict[str, Any] = _cfg.get("asr_api", {})
+ASR_API_PROVIDER = asr_api_c.get("provider", "openrouter")
+ASR_API_MODEL = asr_api_c.get("model", "openai/whisper-large-v3")
+ASR_API_KEY_ENV = asr_api_c.get("api_key_env", "OPENROUTER_API_KEY")

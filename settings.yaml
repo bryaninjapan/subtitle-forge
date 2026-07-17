@@ -13,12 +13,24 @@ openrouter:
   
 pipeline:
   asr_concurrent: 2
+  asr_backend: "local"          # "local" or "api"
+  asr_model: "Qwen/Qwen3-ASR-0.6B"
+  asr_aligner_model: "Qwen/Qwen3-ForcedAligner-0.6B"
+  asr_diarize: false            # Enable speaker diarization
+  asr_diarize_num_speakers:     # Auto-detect (null) or set 2-8
+  asr_use_draft: false          # Speculative decoding for audio >10min
+  asr_hotwords: true            # Glossary term correction in ASR output
   post_proc_concurrent: 4
-  translation_batch_size: 50
   use_qa_loop: true
   use_qa_scoring: false
   use_context_caching: true
   max_cost_usd: 20.0      # Stop if total cost reaches this limit
+
+# ASR API settings (for asr_backend: "api")
+asr_api:
+  provider: "openrouter"        # API provider name
+  model: "openai/whisper-large-v3"
+  api_key_env: "OPENROUTER_API_KEY"  # Env var holding the API key
 
 # Costs per 1 million tokens (USD)
 costs:
