@@ -55,6 +55,7 @@ fn start_server() -> Option<Child> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::init())
         .manage(ServerProcess(Mutex::new(None)))
         .setup(|app| {
             // Window: set min size, handle close-to-tray

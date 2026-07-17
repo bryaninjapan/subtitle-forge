@@ -32,5 +32,11 @@
       "icons/128x128@2x.png",
       "icons/icon.png"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://raw.githubusercontent.com/bryaninjapan/subtitle-forge/main/update.json"],
+      "pubkey": ""
+    }
   }
 }

@@ -101,8 +101,18 @@ export default function Settings() {
     saveSettingUpdate(newSettings, key);
   };
 
-  const handleCheckUpdate = () => {
-    alert('🎉 聲音辨識小工具：您目前已是最新版本 v0.1.0！');
+  const handleCheckUpdate = async () => {
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater');
+      const update = await check();
+      if (update?.available) {
+        toast('info', `新版本 ${update.version} 可用！請前往 GitHub Releases 下載`);
+      } else {
+        toast('info', '已是最新版本');
+      }
+    } catch {
+      toast('info', '版本檢查：v1.0.0（更新需在 Tauri 環境中使用）');
+    }
   };
 
   if (loading && !settings) {

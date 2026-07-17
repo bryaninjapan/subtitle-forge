@@ -7,6 +7,7 @@ import { useState } from 'react';
 import './styles/global.css';
 import type { Page } from './types';
 import { ToastContainer } from './components/Toast';
+import OnboardingWizard from './components/OnboardingWizard';
 
 import AudioFile from './pages/AudioFile';
 import Batch from './pages/Batch';
@@ -134,6 +135,7 @@ export default function App() {
         {renderContent()}
       </main>
       <ToastContainer />
+      <OnboardingWizard />
     </div>
   );
 }

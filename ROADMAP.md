@@ -123,15 +123,16 @@
 | Inline editing, speed control, keyboard shortcuts | ✅ |
 | TypeScript 0 errors, Python 97 tests | ✅ |
 
-## 🔜 M9: Platform & Infrastructure (~2 週)
+## ✅ M9: Platform & Infrastructure (Complete 2026-07-17)
 **Goal:** 跨平台支援 + 技術債清理 + 版本更新機制。
 
-| Phase | Description | Est. |
-|-------|-------------|------|
-| P1 | Windows ASR Backend (G8) | 1 週 |
-| P2 | recover.py refactoring | 2 天 |
-| P3 | Onboarding UX (G4) | 2 天 |
-| P4 | Version update (G6) | 2 天 |
+| Phase | Status |
+|-------|--------|
+| P1 — Windows ASR Backend (OpenVINO) | ✅ |
+| P2 — recover.py refactoring | ✅ 397→package |
+| P3 — Onboarding UX | ✅ 3-step wizard |
+| P4 — Version update (Tauri auto-updater) | ✅ |
+| Code review passed | ✅ 0 issues |
 
 ### Final: Merge feature → main
 **Goal:** 穩定版本合併到主分支。

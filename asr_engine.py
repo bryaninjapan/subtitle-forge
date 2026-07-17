@@ -403,6 +403,15 @@ def _transcribe_with_qwen3_asr(
         srt_result = _apply_cc_conversion(srt_result, mode=CC_CONVERSION)
         return srt_result
 
+    # OpenVINO backend: cross-platform ASR (Windows/macOS/Linux)
+    if ASR_BACKEND == "openvino":
+        print(f"  Using OpenVINO ASR on: {audio_path.name}")
+        srt_result = transcribe_via_openvino(audio_path, language)
+        if ASR_HOTWORDS:
+            srt_result = _apply_hotwords_to_srt(srt_result)
+        srt_result = _apply_cc_conversion(srt_result, mode=CC_CONVERSION)
+        return srt_result
+
     # Chunk long audio (>30min) into 10-min segments for reliable transcription
     duration_sec = get_media_duration_sec(audio_path)
     CHUNK_THRESHOLD = 1800  # 30 min
@@ -843,3 +852,36 @@ def transcribe_one_video(audio_16khz_path: str, language: Optional[str], working
         "srt_path": str(srt_p)
     }
 
+
+
+def transcribe_via_openvino(audio_path: Path, language: Optional[str] = None) -> str:
+    """Transcribe audio using OpenVINO WhisperPipeline (cross-platform)."""
+    try:
+        from openvino_genai import WhisperPipeline
+        from huggingface_hub import snapshot_download
+    except ImportError:
+        return "1\n00:00:00,000 --> 00:00:01,000\nOpenVINO not installed\n"
+
+    model_dir = Path.home() / ".cache" / "huggingface" / "hub" / "openvino-whisper-base"
+    if not (model_dir / "openvino_model.xml").exists():
+        try:
+            snapshot_download(
+                repo_id="openvino/whisper-base",
+                local_dir=str(model_dir),
+                resume_download=True,
+            )
+        except Exception:
+            return "1\n00:00:00,000 --> 00:00:01,000\nFailed to download OpenVINO model\n"
+
+    import os
+    os.environ["OPENVINO_LOG_LEVEL"] = "ERROR"
+
+    pipe = WhisperPipeline(str(model_dir), "CPU")
+    result = pipe.transcribe(str(audio_path), language=language or "en", task="transcribe")
+
+    blocks: list[str] = []
+    for i, seg in enumerate(result, 1):
+        start = _seconds_to_srt_time(seg.start)
+        end = _seconds_to_srt_time(seg.end)
+        blocks.append(f"{i}\n{start} --> {end}\n{seg.text.strip()}\n")
+    return "\n".join(blocks)

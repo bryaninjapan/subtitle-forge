@@ -13,3 +13,4 @@ silero-vad>=6.2
 flask-cors>=5.0
 qrcode>=8.0
 opencc-python>=0.1.7
+openvino>=2024.0
