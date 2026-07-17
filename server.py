@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import threading
 import time
 import uuid
@@ -56,28 +57,312 @@ def allowed_file(filename: str) -> bool:
 # ── Background processing ────────────────────────────────────────────────
 
 def _process_file(task_id: str, filepath: Path) -> None:
-    """Run the full Subtitle Forge pipeline on a single file in a background thread."""
+    """Run the Subtitle Forge pipeline on a single file in a background thread."""
     set_progress(task_id, pct=5, stage="extracting", message="Extracting audio...")
     try:
         from director import WorkflowEngine
 
         set_progress(task_id, pct=15, stage="initializing", message="Initializing engine...")
+
+        # Read toggle params from progress store
+        with _progress_lock:
+            task_info = progress_store.get(task_id, {})
+
         engine = WorkflowEngine(
             MULTI_AGENT_WORKFLOW,
-            language=None,  # auto-detect
+            language=None,
             style="academic",
-            chapters=True,
+            chapters=task_info.get("chapters", True),
+            translate=task_info.get("translate", True),
+            notes=task_info.get("notes", True),
+            prompt=task_info.get("prompt", ""),
         )
 
         set_progress(task_id, pct=30, stage="processing", message="Pipeline running...")
-
-        # Run in a separate thread but we track progress by file count
-        # The engine processes each file through ASR→Translate→Notes→Chapters
         engine.run_all([filepath])
 
         set_progress(task_id, pct=100, stage="done", message="Complete!")
     except Exception as e:
         set_progress(task_id, pct=0, stage="error", message=str(e), error=str(e))
+
+
+# ── Model Management ────────────────────────────────────────────────────
+
+ASR_MODELS = [
+    {"id": "Qwen3-ASR-0.6B", "repo": "Qwen/Qwen3-ASR-0.6B", "size_mb": 1200},
+    {"id": "Qwen3-ForcedAligner-0.6B", "repo": "Qwen/Qwen3-ForcedAligner-0.6B", "size_mb": 1800},
+]
+
+
+def _get_model_cache_dir(repo_id: str) -> Path:
+    """Get the HuggingFace cache directory for a model repo."""
+    name = repo_id.replace("/", "--")
+    return Path.home() / ".cache" / "huggingface" / "hub" / f"models--{name}"
+
+
+def _check_model_status(repo_id: str) -> dict:
+    """Check if a HuggingFace model is downloaded and return status."""
+    cache_dir = _get_model_cache_dir(repo_id)
+    snapshots_dir = cache_dir / "snapshots"
+    refs_dir = cache_dir / "refs"
+
+    if not snapshots_dir.exists():
+        return {"status": "not_downloaded", "size_mb": 0}
+
+    # Check for downloaded snapshots
+    snapshots = list(snapshots_dir.iterdir()) if snapshots_dir.exists() else []
+    # Read main branch ref to find current snapshot
+    main_ref = ""
+    if refs_dir.exists():
+        main_file = refs_dir / "main"
+        if main_file.exists():
+            main_ref = main_file.read_text().strip()
+
+    if not snapshots:
+        return {"status": "not_downloaded", "size_mb": 0}
+
+    # Calculate total size
+    total_bytes = 0
+    for snap in snapshots:
+        for f in snap.rglob("*"):
+            if f.is_file():
+                total_bytes += f.stat().st_size
+
+    target_snap = None
+    if main_ref:
+        target_snap = snapshots_dir / main_ref
+        if target_snap.exists():
+            return {"status": "downloaded", "size_mb": round(total_bytes / 1024 / 1024)}
+        else:
+            return {"status": "downloading", "size_mb": round(total_bytes / 1024 / 1024)}
+
+    return {"status": "downloaded", "size_mb": round(total_bytes / 1024 / 1024)}
+
+
+@app.route("/models/status")
+def get_model_status():
+    """Return status of all known ASR models."""
+    results = []
+    for m in ASR_MODELS:
+        info = _check_model_status(m["repo"])
+        results.append({
+            "id": m["id"],
+            "repo": m["repo"],
+            "status": info["status"],
+            "size_mb": info["size_mb"],
+        })
+    return jsonify({"models": results})
+
+
+@app.route("/models/download/<model_id>")
+def download_model(model_id: str):
+    """Trigger download of a specific model in the background."""
+    model = next((m for m in ASR_MODELS if m["id"] == model_id), None)
+    if not model:
+        return jsonify({"error": f"Unknown model: {model_id}"}), 404
+
+    # Check if already downloaded
+    info = _check_model_status(model["repo"])
+    if info["status"] == "downloaded":
+        return jsonify({"status": "already_downloaded", "model": model_id})
+
+    # Start background download
+    task_id = f"download_{model_id}"
+    from config import ASR_MAX_CONCURRENT
+    set_progress(task_id, pct=0, stage="downloading", message=f"Downloading {model_id}...")
+
+    def _download_worker(task_id: str, repo_id: str):
+        try:
+            from huggingface_hub import snapshot_download  # type: ignore
+            set_progress(task_id, pct=10, stage="downloading", message=f"Downloading {repo_id}...")
+
+            def _on_progress(completed: int, total: int):
+                pct = int((completed / max(total, 1)) * 100)
+                set_progress(task_id, pct=pct, stage="downloading", message=f"Downloading {repo_id}...")
+
+            snapshot_download(
+                repo_id=repo_id,
+                resume_download=True,
+                ignore_patterns=["*.h5", "*.ot", "*.msgpack"],
+            )
+            set_progress(task_id, pct=100, stage="done", message=f"Downloaded {repo_id}")
+        except Exception as e:
+            set_progress(task_id, pct=0, stage="error", message=str(e), error=str(e))
+
+    t = threading.Thread(target=_download_worker, args=(task_id, model["repo"]), daemon=True)
+    t.start()
+
+    return jsonify({"status": "downloading", "model": model_id, "task_id": task_id})
+
+
+# ── Endpoint Service ────────────────────────────────────────────────────
+
+ENDPOINT_PORT = 11435
+_endpoint_access_key: str = ""
+_endpoint_server_thread: threading.Thread | None = None
+_endpoint_server_running = False
+
+
+def _generate_access_key() -> str:
+    """Generate a random access key."""
+    import secrets
+    return secrets.token_urlsafe(16)
+
+
+def _run_endpoint_server():
+    """Run a lightweight upload server on a separate port."""
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import json as json_module
+    import cgi
+    from urllib.parse import urlparse
+
+    class EndpointHandler(BaseHTTPRequestHandler):
+        def _send_json(self, code: int, data: dict):
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json_module.dumps(data).encode())
+
+        def _check_auth(self) -> bool:
+            auth = self.headers.get("Authorization", "")
+            expected = f"Bearer {_endpoint_access_key}"
+            if auth != expected:
+                self._send_json(403, {"error": "Invalid or missing access key"})
+                return False
+            return True
+
+        def do_OPTIONS(self):
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+            self.end_headers()
+
+        def do_GET(self):
+            path = urlparse(self.path).path
+            if path == "/":
+                self._send_json(200, {
+                    "status": "running",
+                    "name": "Subtitle Forge Endpoint",
+                })
+            elif path == "/health":
+                self._send_json(200, {"status": "ok"})
+            else:
+                self._send_json(404, {"error": "Not found"})
+
+        def do_POST(self):
+            path = urlparse(self.path).path
+            if path == "/upload":
+                if not self._check_auth():
+                    return
+                # Parse multipart form
+                content_type = self.headers.get("Content-Type", "")
+                form = cgi.FieldStorage(
+                    fp=self.rfile,
+                    headers=self.headers,
+                    environ={
+                        "REQUEST_METHOD": "POST",
+                        "CONTENT_TYPE": content_type,
+                    }
+                )
+                if "file" not in form:
+                    self._send_json(400, {"error": "No file part"})
+                    return
+
+                file_item = form["file"]
+                if not file_item.filename:
+                    self._send_json(400, {"error": "No file selected"})
+                    return
+
+                # Save file to input directory
+                from werkzeug.utils import secure_filename
+                safe_name = secure_filename(file_item.filename or "upload")
+                dest = INPUT_DIR / safe_name
+                with open(dest, "wb") as f:
+                    f.write(file_item.file.read())
+
+                # Start processing
+                task_id = str(uuid.uuid4())[:8]
+                set_progress(task_id, file=safe_name, pct=0, stage="queued", message="Queued...")
+                t = threading.Thread(target=_process_file, args=(task_id, dest), daemon=True)
+                t.start()
+
+                self._send_json(200, {
+                    "task_id": task_id,
+                    "file": safe_name,
+                    "status": "queued",
+                })
+            else:
+                self._send_json(404, {"error": "Not found"})
+
+        def log_message(self, format, *args):
+            pass  # Suppress HTTP server logs
+
+    global _endpoint_server_running
+    _endpoint_server_running = True
+    server = HTTPServer(("0.0.0.0", ENDPOINT_PORT), EndpointHandler)
+    try:
+        server.serve_forever()
+    except OSError:
+        pass
+    finally:
+        _endpoint_server_running = False
+        server.server_close()
+
+
+@app.route("/endpoint/start", methods=["POST"])
+def start_endpoint():
+    """Start the endpoint upload server."""
+    global _endpoint_server_thread, _endpoint_access_key
+    if _endpoint_server_thread and _endpoint_server_thread.is_alive():
+        return jsonify({"status": "already_running", "port": ENDPOINT_PORT, "key": _endpoint_access_key})
+
+    _endpoint_access_key = _generate_access_key()
+    _endpoint_server_thread = threading.Thread(target=_run_endpoint_server, daemon=True)
+    _endpoint_server_thread.start()
+
+    # Wait briefly for server to start
+    import time
+    time.sleep(0.5)
+
+    return jsonify({
+        "status": "started",
+        "port": ENDPOINT_PORT,
+        "url": f"http://{_get_local_ip()}:{ENDPOINT_PORT}",
+        "key": _endpoint_access_key,
+    })
+
+
+@app.route("/endpoint/stop", methods=["POST"])
+def stop_endpoint():
+    """Stop the endpoint upload server."""
+    global _endpoint_server_thread, _endpoint_server_running
+    if not _endpoint_server_thread or not _endpoint_server_thread.is_alive():
+        return jsonify({"status": "not_running"})
+
+    _endpoint_server_running = False
+    # Send a dummy request to unblock server
+    import urllib.request
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{ENDPOINT_PORT}/health", timeout=1)
+    except Exception:
+        pass
+
+    _endpoint_server_thread = None
+    return jsonify({"status": "stopped"})
+
+
+@app.route("/endpoint/status")
+def get_endpoint_status():
+    """Return endpoint server status."""
+    running = _endpoint_server_thread is not None and _endpoint_server_thread.is_alive()
+    return jsonify({
+        "running": running,
+        "port": ENDPOINT_PORT if running else None,
+        "url": f"http://{_get_local_ip()}:{ENDPOINT_PORT}" if running else None,
+        "key": _endpoint_access_key if running else None,
+    })
 
 
 # ── Routes ───────────────────────────────────────────────────────────────
@@ -136,6 +421,167 @@ def get_output_file(filepath: str):
         return jsonify({"error": "File not found"}), 404
     from flask import send_file  # type: ignore
     return send_file(str(file_path))
+
+
+@app.route("/audio/<path:filepath>")
+def serve_audio(filepath: str):
+    """Serve audio/video files for playback with Range header support."""
+    # Search input dir first, then output dir
+    input_path = (INPUT_DIR / filepath).resolve()
+    output_path = (OUTPUT_DIR / filepath).resolve()
+
+    if input_path.exists() and str(input_path).startswith(str(INPUT_DIR.resolve())):
+        file_path = input_path
+    elif output_path.exists() and str(output_path).startswith(str(OUTPUT_DIR.resolve())):
+        file_path = output_path
+    else:
+        return jsonify({"error": "File not found"}), 404
+
+    from flask import send_file  # type: ignore
+    return send_file(str(file_path), conditional=True)
+
+
+def _compute_waveform_peaks(audio_path: Path) -> list[float]:
+    """Extract adaptive-resolution waveform peaks from audio.
+
+    Uses ffmpeg to decode to mono 16-bit PCM, then downsamples
+    to an adaptive number of points based on duration.
+    """
+    import struct
+    import subprocess
+
+    duration = 0.0
+    try:
+        dur_cmd = ["ffprobe", "-v", "error", "-show_entries",
+                     "format=duration", "-of",
+                     "csv=p=0", str(audio_path)]
+        dur_out = subprocess.run(dur_cmd, capture_output=True, text=True, timeout=30)
+        duration = float(dur_out.stdout.strip() or 0)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        duration = 0.0
+
+    # Adaptive peak count
+    if duration <= 0:
+        num_peaks = 1000
+    elif duration < 60:          # < 1 min → ~50 pts/s
+        num_peaks = max(200, int(duration * 50))
+    elif duration < 600:         # < 10 min → ~10 pts/s
+        num_peaks = int(duration * 10)
+    else:                        # > 10 min → cap at 10000
+        num_peaks = min(int(duration * 10), 10000)
+
+    try:
+        # Decode to mono 16-bit PCM
+        cmd = [
+            "ffmpeg", "-v", "quiet", "-i", str(audio_path),
+            "-ac", "1", "-ar", "8000",  # 8kHz mono is sufficient for waveform
+            "-f", "s16le", "-",
+        ]
+        raw = subprocess.run(cmd, capture_output=True, timeout=300).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+
+    if not raw:
+        return []
+
+    # Decode raw PCM samples
+    samples = struct.unpack(f"<{len(raw) // 2}h", raw)
+
+    # Compute peaks (max amplitude over windowed samples)
+    window = max(1, len(samples) // num_peaks)
+    peaks: list[float] = []
+    for i in range(0, len(samples) - window + 1, window):
+        chunk = samples[i:i + window]
+        peak = max(abs(s) for s in chunk) / 32768.0  # normalize to 0.0-1.0
+        peaks.append(peak)
+
+    return peaks
+
+
+@app.route("/waveform/<task_id>")
+def get_waveform(task_id: str):
+    """Return waveform peaks for a completed task's audio."""
+    with _progress_lock:
+        task = progress_store.get(task_id)
+
+    audio_file: Path | None = None
+    if task and "file" in task:
+        fname = task["file"]
+        for base in [INPUT_DIR, OUTPUT_DIR]:
+            for p in base.iterdir():
+                if p.is_file() and p.name == fname:
+                    audio_file = p
+                    break
+            if audio_file:
+                break
+
+    if not audio_file or not audio_file.exists():
+        return jsonify({"error": "Audio file not found for this task"}), 404
+
+    peaks = _compute_waveform_peaks(audio_file)
+    return jsonify({
+        "peaks": peaks,
+        "num_peaks": len(peaks),
+    })
+
+
+@app.route("/timestamps/<task_id>")
+def get_word_timestamps(task_id: str):
+    """Return word-level timestamps for a completed task."""
+    with _progress_lock:
+        task = progress_store.get(task_id)
+
+    if not task or "file" not in task:
+        return jsonify({"error": "Task not found"}), 404
+
+    fname = task["file"]
+    stem = Path(fname).stem
+    for subdir in OUTPUT_DIR.iterdir():
+        if subdir.is_dir():
+            words_path = subdir / f"{stem}.words.json"
+            if words_path.exists():
+                try:
+                    return jsonify(json.loads(words_path.read_text(encoding="utf-8")))
+                except Exception:
+                    return jsonify({"error": "Failed to parse words file"}), 500
+
+    return jsonify({"error": "Word timestamps not found"}), 404
+
+
+def _get_local_ip() -> str:
+    """Get the local network IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        # Doesn't need to reach, just to determine the interface
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return "127.0.0.1"
+
+
+@app.route("/endpoint/qrcode")
+def get_endpoint_qrcode():
+    """Return a QR code PNG for the server upload URL."""
+    import io
+    import qrcode  # type: ignore
+
+    ip = _get_local_ip()
+    port = request.host.split(":")[1] if ":" in request.host else "5000"
+    url = f"http://{ip}:{port}"
+
+    qr = qrcode.QRCode(box_size=8, border=2)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="#111827", back_color="white")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    from flask import Response  # type: ignore
+    return Response(buf.getvalue(), mimetype="image/png")
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -214,6 +660,66 @@ def upload_file():
     if request.accept_mimetypes.accept_json:
         return jsonify({"task_id": task_id, "file": safe_name, "status": "queued"})
     return redirect(url_for("index"))
+
+
+@app.route("/pipeline", methods=["POST"])
+def run_pipeline():
+    """Accept file + toggle params, run selective pipeline.
+
+    Multipart form with optional JSON fields:
+      - file: binary media file (required)
+      - translate: "true"/"false" (default: false)
+      - notes: "true"/"false" (default: false)
+      - chapters: "true"/"false" (default: false)
+      - prompt: optional hint text for recognition
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    file = request.files["file"]
+    if file.filename == "" or not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({"error": f"File type not allowed"}), 400
+
+    # Save file
+    safe_name = secure_filename(file.filename)
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    dest = INPUT_DIR / safe_name
+    file.save(str(dest))
+
+    # Read toggle params from form
+    translate = request.form.get("translate", "false").lower() == "true"
+    notes = request.form.get("notes", "false").lower() == "true"
+    chapters = request.form.get("chapters", "false").lower() == "true"
+    prompt = request.form.get("prompt", "")
+
+    # Spawn background processing
+    task_id = str(uuid.uuid4())[:8]
+    set_progress(
+        task_id,
+        file=safe_name,
+        pct=0,
+        stage="queued",
+        message="Queued...",
+        translate=translate,
+        notes=notes,
+        chapters=chapters,
+        prompt=prompt,
+    )
+
+    t = threading.Thread(target=_process_file, args=(task_id, dest), daemon=True)
+    t.start()
+
+    return jsonify({
+        "task_id": task_id,
+        "file": safe_name,
+        "status": "queued",
+        "translate": translate,
+        "notes": notes,
+        "chapters": chapters,
+    })
 
 
 # ── HTML Template ────────────────────────────────────────────────────────

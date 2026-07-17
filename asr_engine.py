@@ -20,6 +20,8 @@ from config import (
     ASR_MAX_CONCURRENT,
     ASR_MODEL,
     ASR_USE_DRAFT,
+    CC_CONVERSION,
+    VAD_THRESHOLD,
     AUDIO_SAMPLE_RATE,
     FFMPEG_BIN,
     OUTPUT_DIR,
@@ -131,10 +133,10 @@ def check_silence(audio_path: Path, threshold_db: int = -40) -> bool:
         # Process in chunks (silero_vad.get_speech_timestamps expects specific format)
         from silero_vad import get_speech_timestamps
         speech = get_speech_timestamps(
-            wav[0].numpy(),
+            wav[0].numpy() if hasattr(wav, 'numpy') else wav[0],
             vad_model,
             sampling_rate=sr,
-            threshold=0.5,
+            threshold=VAD_THRESHOLD,
             min_speech_duration_ms=250,
             min_silence_duration_ms=100,
         )
@@ -398,6 +400,7 @@ def _transcribe_with_qwen3_asr(
         srt_result = transcribe_via_api(audio_path, language)
         if ASR_HOTWORDS:
             srt_result = _apply_hotwords_to_srt(srt_result)
+        srt_result = _apply_cc_conversion(srt_result, mode=CC_CONVERSION)
         return srt_result
 
     # Chunk long audio (>30min) into 10-min segments for reliable transcription
@@ -443,6 +446,7 @@ def _transcribe_with_qwen3_asr(
                                             reference_text=reference_text)
             if ASR_HOTWORDS:
                 srt_result = _apply_hotwords_to_srt(srt_result)
+            srt_result = _apply_cc_conversion(srt_result, mode=CC_CONVERSION)
             return srt_result
         except Exception as e:
             print(f"  [info] ForcedAligner fell back to segment timestamps: {e}")
@@ -451,6 +455,8 @@ def _transcribe_with_qwen3_asr(
         raw = f"1\n00:00:00,000 --> 00:00:01,000\n{result.text.strip()}\n"
         if ASR_HOTWORDS:
             raw = _apply_hotwords_to_srt(raw)
+        if CC_CONVERSION != "off":
+            raw = _apply_cc_conversion(raw, mode=CC_CONVERSION)
         return raw
 
     subtitle_blocks = _group_words_into_subtitles(result.segments)
@@ -464,6 +470,8 @@ def _transcribe_with_qwen3_asr(
     result_srt = "\n\n".join(srt_blocks) + "\n"
     if ASR_HOTWORDS:
         result_srt = _apply_hotwords_to_srt(result_srt)
+    if CC_CONVERSION != "off":
+        result_srt = _apply_cc_conversion(result_srt, mode=CC_CONVERSION)
     return result_srt
 
 
@@ -494,10 +502,36 @@ def _load_hotwords_terms() -> set[str]:
     return terms
 
 
-def _apply_hotwords_to_srt(srt_text: str) -> str:
-    """Scan SRT text and correct ASR errors against glossary terms."""
+def _apply_cc_conversion(srt_text: str, mode: str = "standard") -> str:
+    """Convert Simplified Chinese to Traditional Chinese in SRT text.
+
+    mode: "standard" (s2t) or "taiwan" (s2tw) or "off" (passthrough)
+    """
+    if mode == "off":
+        return srt_text
+    try:
+        from opencc import OpenCC  # type: ignore
+        config = "s2tw" if mode == "taiwan" else "s2t"
+        converter = OpenCC(config)
+        return converter.convert(srt_text)
+    except Exception:
+        return srt_text
+
+
+def _apply_hotwords_to_srt(srt_text: str, extra_terms: list[str] | None = None) -> str:
+    """Scan SRT text and correct ASR errors against glossary terms.
+
+    extra_terms: additional terms to treat as hot words (from user prompt).
+    """
     import re
     terms = _load_hotwords_terms()
+    if extra_terms:
+        for t in extra_terms:
+            # Split multi-word prompt into individual terms
+            for word in re.split(r'[\s,，、;；]+', t.strip()):
+                word = word.strip()
+                if word and len(word) >= 2:
+                    terms.add(word)
     if not terms:
         return srt_text
 
@@ -581,6 +615,26 @@ def _align_and_format(audio_path: Path, transcript: str, language: Optional[str]
         start = _seconds_to_srt_time(block["start"])
         end = _seconds_to_srt_time(block["end"])
         srt_blocks.append(f"{i}\n{start} --> {end}\n{block['text']}")
+
+    # ── Save word-level timestamps as JSON ─────────────────────────────
+    words_json = []
+    for w in aligned_words:
+        wt = getattr(w, "text", None) or (w.get("text", "") if isinstance(w, dict) else "")
+        ws = getattr(w, "start", None) or (w.get("start", 0.0) if isinstance(w, dict) else 0.0)
+        we = getattr(w, "end", None) or (w.get("end", 0.0) if isinstance(w, dict) else 0.0)
+        if wt and wt.strip():
+            words_json.append({
+                "text": wt.strip(),
+                "start": float(ws),
+                "end": float(we),
+            })
+    try:
+        import json
+        words_path = audio_path.with_suffix(".words.json")
+        with open(words_path, "w", encoding="utf-8") as f:
+            json.dump({"words": words_json, "language": language or "en"}, f, ensure_ascii=False)
+    except Exception:
+        pass
 
     return "\n\n".join(srt_blocks) + "\n"
 
@@ -722,6 +776,13 @@ def transcribe_files(
             write_srt(entries, srt_path)
             txt_path = out_dir / f"{media_path.stem}.transcript.txt"
             txt_path.write_text(" ".join(e.text for e in entries) + "\n", encoding="utf-8")
+
+            # Move word-level timestamps JSON if it exists alongside audio
+            words_src = upload_path.with_suffix(".words.json")
+            if words_src.exists():
+                import shutil
+                words_dst = out_dir / f"{media_path.stem}.words.json"
+                shutil.move(str(words_src), str(words_dst))
 
             if upload_path != media_path and upload_path.exists():
                 try:

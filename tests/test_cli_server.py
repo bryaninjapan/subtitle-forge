@@ -374,6 +374,159 @@ def test_server_output_file_not_found():
         assert resp.status_code in (404, 403)
 
 
+def test_server_audio_unknown_file():
+    """GET /audio/<path> returns 404 for missing files."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/audio/nonexistent.mp3")
+        assert resp.status_code == 404
+
+
+def test_server_waveform_unknown_task():
+    """GET /waveform/<task_id> returns 404 for unknown task."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/waveform/nonexistent_task")
+        assert resp.status_code == 404
+
+
+def test_compute_waveform_peaks():
+    """_compute_waveform_peaks returns empty list for non-existent file."""
+    from server import _compute_waveform_peaks
+    from pathlib import Path
+
+    result = _compute_waveform_peaks(Path("/tmp/nonexistent_audio.mp3"))
+    assert result == []
+
+
+def test_server_timestamps_unknown_task():
+    """GET /timestamps/<task_id> returns 404 for unknown task."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/timestamps/nonexistent_task")
+        assert resp.status_code == 404
+
+
+def test_server_pipeline_no_file():
+    """POST /pipeline returns 400 when no file provided."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.post("/pipeline", data={})
+        assert resp.status_code == 400
+
+
+def test_server_pipeline_bad_extension():
+    """POST /pipeline returns 400 for disallowed file type."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.post("/pipeline", data={"file": (b"data", "test.exe")})
+        assert resp.status_code == 400
+
+
+def test_server_pipeline_accepts_toggles():
+    """POST /pipeline accepts translate/notes/chapters toggles."""
+    from server import app, INPUT_DIR
+    import tempfile, os
+
+    tf = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+    tf.write(b"dummy audio data")
+    tf.close()
+
+    try:
+        with app.test_client() as client:
+            with open(tf.name, "rb") as f:
+                resp = client.post("/pipeline", data={
+                    "file": f,
+                    "translate": "true",
+                    "notes": "true",
+                    "chapters": "false",
+                    "prompt": "test prompt",
+                })
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["translate"] is True
+            assert data["notes"] is True
+            assert data["chapters"] is False
+            assert "task_id" in data
+    finally:
+        os.unlink(tf.name)
+        for p in INPUT_DIR.iterdir():
+            if "tmp" in p.name:
+                p.unlink(missing_ok=True)
+
+
+def test_models_status():
+    """GET /models/status returns model list."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/models/status")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "models" in data
+        assert len(data["models"]) > 0
+
+
+def test_models_download_unknown():
+    """POST /models/download/<id> returns 404 for unknown model."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/models/download/nonexistent_model")
+        assert resp.status_code == 404
+
+
+def test_models_download_already_cached():
+    """GET /models/download/<id> for already cached model."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/models/download/Qwen3-ASR-0.6B")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] in ("already_downloaded", "downloading")
+
+
+def test_endpoint_status_default_not_running():
+    """GET /endpoint/status returns not_running initially."""
+    from server import app
+
+    with app.test_client() as client:
+        resp = client.get("/endpoint/status")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["running"] is False
+
+
+def test_endpoint_start_stop():
+    """POST /endpoint/start and /endpoint/stop cycle."""
+    from server import app
+
+    with app.test_client() as client:
+        # Start
+        resp = client.post("/endpoint/start")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "started"
+        assert data["key"]
+        assert data["port"] == 11435
+
+        # Status should show running
+        resp = client.get("/endpoint/status")
+        assert resp.get_json()["running"] is True
+
+        # Stop
+        resp = client.post("/endpoint/stop")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "stopped"
+
+
 # ── server.py routes ─────────────────────────────────────────────────────
 
 

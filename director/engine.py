@@ -74,11 +74,17 @@ class WorkflowEngine:
         language: Optional[str] = None,
         style: str = "academic",
         chapters: bool = True,
+        translate: bool = True,
+        notes: bool = True,
+        prompt: str = "",
     ):
         self.workflow_path = workflow_path
         self.language = language
         self.style = style
         self.chapters = chapters
+        self.translate = translate
+        self.notes = notes
+        self.prompt = prompt
         self.workflow = self._load_workflow()
         self.agents = []
         for a in self.workflow.get("agents", []):
@@ -208,7 +214,7 @@ class WorkflowEngine:
 
     def process_video(
         self, video_path: Path, progress: Progress, parent_task_id: TaskID
-    ):
+    ) -> bool:
         """Processes a single video through the DAG."""
         working_dir = OUTPUT_DIR / video_path.stem
         working_dir.mkdir(parents=True, exist_ok=True)
@@ -232,6 +238,7 @@ class WorkflowEngine:
         initial_context: Dict[str, Any] = {
             "video_path": str(video_path),
             "style": self.style,
+            "prompt": self.prompt,
         }
         if self.language:
             initial_context["language"] = str(self.language)
@@ -402,14 +409,26 @@ class WorkflowEngine:
         elif action == "transcribe_audio":
             from asr_engine import transcribe_one_video  # type: ignore
 
-            return transcribe_one_video(**inputs)
+            result = transcribe_one_video(**inputs)
+            # Apply prompt hot words after ASR
+            prompt = inputs.get("prompt", "")
+            if prompt and result.get("raw_srt_text"):
+                from asr_engine import _apply_hotwords_to_srt
+                result["raw_srt_text"] = _apply_hotwords_to_srt(
+                    result["raw_srt_text"], extra_terms=[prompt]
+                )
+            return result
 
         elif action == "translate_srt":
+            if not self.translate:
+                return {"zh_srt_text": None}
             from translator import translate_one_video  # type: ignore
 
             return translate_one_video(**inputs)
 
         elif action == "create_bilingual_srt":
+            if not self.translate:
+                return {"bilingual_srt_text": None}
             from srt_bilingual import create_bilingual_srt_from_text  # type: ignore
 
             return create_bilingual_srt_from_text(**inputs)
@@ -425,6 +444,8 @@ class WorkflowEngine:
             }
 
         elif action == "generate_study_notes":
+            if not self.notes:
+                return {"study_notes_md": None}
             from notes_generator import generate_study_notes  # type: ignore
 
             raw_fps = inputs["frame_paths"]
@@ -451,6 +472,8 @@ class WorkflowEngine:
             }
 
         elif action == "score_translation":
+            if not self.translate:
+                return {"qa_score": None, "qa_critique": None}
             from qa_agent import score_translation  # type: ignore
 
             return score_translation(**inputs)

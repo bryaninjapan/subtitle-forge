@@ -25,11 +25,16 @@ pipeline:
   asr_hotwords: true
   asr_model: Qwen/Qwen3-ASR-0.6B
   asr_use_draft: false
+  cc_conversion: 'off'
+  chapters: true
   max_cost_usd: 20.0
   post_proc_concurrent: 4
+  study_notes: true
+  translate: true
   use_context_caching: true
   use_qa_loop: true
   use_qa_scoring: false
+  vad_threshold: 0.5
 prompts:
   chapter: 'You are a {domain} academic editor. Analyze the provided transcript to
     identify logical topic shifts, specifically focusing on {domain} Learning Outcome
