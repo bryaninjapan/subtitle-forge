@@ -49,20 +49,46 @@
 
 **Planning:** `.planning/phases/ASR-DUAL-BACKEND/`
 
-## 🔄 Milestone 5: Desktop App UX-2 (Planned)
+## ✓ Milestone 5: Backend Enhancement — Mini Tool Parity (Complete 2026-07-17)
+
+**Goal:** Add all missing backend endpoints & pipeline features before building React frontend.
+
+| Phase | Status |
+|-------|--------|
+| P1 — New API endpoints (audio, waveform, timestamps, QR, pipeline) | ✅ Done |
+| P2 — Pipeline refactor (toggle, VAD, OpenCC, prompt→hot words) | ✅ Done |
+| P3 — Model management (status + download API) | ✅ Done |
+| P4 — Endpoint service (start/stop, auth, port 11435) | ✅ Done |
+| Code review fixes | ✅ Done |
+| 76 Python tests | ✅ Pass |
+
+**Planning:** `.planning/phases/BACKEND-MISSING/`
+
+## ✅ Milestone 6: Desktop App UX-2 (Complete 2026-07-17)
 
 **Goal:** Professional Desktop GUI via Tauri + React.
 
-| Phase | Description | Priority | Est. |
-|-------|-------------|----------|------|
-| UX-2 — Tauri + React Desktop GUI | Full desktop app: upload, settings, progress, batch, player, subtitle editor, tray | High | 3-4 wks |
+| Phase | Status |
+|-------|--------|
+| Part A — Tauri shell, sidecar, system tray, CORS | ✅ Done |
+| Part B — React frontend via AI Studio (8 prompts) | ✅ Done |
+| - AudioFile.tsx (upload, playback, waveform, subtitles) | ✅ |
+| - Batch.tsx (multi-file queue, progress, status) | ✅ |
+| - Record.tsx (recording UI with simulated speech) | ✅ |
+| - Endpoint.tsx (service toggle, QR, API key, Cloudflare) | ✅ |
+| - ModelManage.tsx (model cards, download, inference switch) | ✅ |
+| - Settings.tsx (VAD, CC conversion, format, theme) | ✅ |
+| TypeScript zero errors | ✅ |
+| Vite build (266KB, 370ms) | ✅ |
 
-**Context:** `.planning/phases/UX-2-DESKTOP-APP/CONTEXT.md`
+**Planning:** `.planning/phases/UX-2-DESKTOP-APP/`
 
 ## Backlog (No plan yet)
 
 | Phase | Description | Priority |
 |-------|-------------|----------|
+| **Subtitle Editor** | 字幕列表可編輯、校正時間軸、即時預覽播放 | Low |
+| **Audio/Video Player** | 精美波形播放器、逐字跳播、速度控制、播放進度同步 | Low |
 | UX-3 — Polish | Notifications, settings panel, output preview | Low |
 | recover.py refactoring | Split 396-line recovery engine | Low |
 | Testing expansion | Add tests for remaining modules | Low |
