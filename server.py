@@ -15,6 +15,7 @@ import socket
 import threading
 import time
 import uuid
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
 from flask import Flask, jsonify, redirect, render_template_string, request, url_for  # type: ignore
@@ -52,6 +53,32 @@ def set_progress(task_id: str, **kwargs) -> None:
 
 def allowed_file(filename: str) -> bool:
     return Path(filename).suffix.lower() in ALLOWED_EXTENSIONS
+
+
+# ── Shared upload helper ────────────────────────────────────────────────
+
+
+def _save_uploaded_file():
+    """Validate and save a file from request.files.
+
+    Returns (safe_name, dest_path) on success.
+    Returns a Flask response tuple for errors (caller must ``return`` it).
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    file = request.files["file"]
+    if file.filename == "" or not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({"error": f"File type not allowed. Supported: {', '.join(sorted(ALLOWED_EXTENSIONS))}"}), 400
+
+    safe_name = secure_filename(file.filename)
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    dest = INPUT_DIR / safe_name
+    file.save(str(dest))
+    return safe_name, dest
 
 
 # ── Background processing ────────────────────────────────────────────────
@@ -209,99 +236,120 @@ def _generate_access_key() -> str:
     return secrets.token_urlsafe(16)
 
 
+class _EndpointHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for the endpoint upload server."""
+
+    def _send_json(self, code: int, data: dict):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    def _check_auth(self) -> bool:
+        auth = self.headers.get("Authorization", "")
+        expected = f"Bearer {_endpoint_access_key}"
+        if auth != expected:
+            self._send_json(403, {"error": "Invalid or missing access key"})
+            return False
+        return True
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        self.end_headers()
+
+    def do_GET(self):
+        from urllib.parse import urlparse
+        path = urlparse(self.path).path
+        if path == "/":
+            self._send_json(200, {
+                "status": "running",
+                "name": "Subtitle Forge Endpoint",
+            })
+        elif path == "/health":
+            self._send_json(200, {"status": "ok"})
+        else:
+            self._send_json(404, {"error": "Not found"})
+
+    def do_POST(self):
+        from urllib.parse import urlparse
+        path = urlparse(self.path).path
+        if path == "/upload":
+            if not self._check_auth():
+                return
+            # Read raw body and parse multipart manually
+            content_type = self.headers.get("Content-Type", "")
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length) if content_length > 0 else b""
+
+            # Simple multipart parser for file upload
+            import re
+            boundary = ""
+            if "boundary=" in content_type:
+                boundary = content_type.split("boundary=")[1].strip()
+                # Remove any quotes around boundary
+                boundary = boundary.strip('"').strip("'")
+
+            if not boundary:
+                self._send_json(400, {"error": "Missing boundary in Content-Type"})
+                return
+
+            # Parse multipart body
+            parts = body.split(f"--{boundary}".encode())
+            filename = ""
+            file_data = b""
+
+            for part in parts:
+                if b"Content-Disposition" not in part:
+                    continue
+                # Extract filename
+                fn_match = re.search(rb'filename="([^"]*)"', part)
+                if not fn_match:
+                    continue
+                filename = fn_match.group(1).decode("utf-8", errors="replace")
+                # Extract file data (after the double CRLF)
+                header_end = part.find(b"\r\n\r\n")
+                if header_end > 0:
+                    raw_data = part[header_end + 4:]
+                    # Remove trailing CRLF + boundary marker
+                    file_data = raw_data.rstrip(b"\r\n-")
+
+            if not filename or not file_data:
+                self._send_json(400, {"error": "No file data found"})
+                return
+
+            # Save file and start processing
+            from werkzeug.utils import secure_filename
+            safe_name = secure_filename(filename)
+            dest = INPUT_DIR / safe_name
+            with open(dest, "wb") as f:
+                f.write(file_data)
+
+            task_id = str(uuid.uuid4())[:8]
+            set_progress(task_id, file=safe_name, pct=0, stage="queued", message="Queued...")
+            t = threading.Thread(target=_process_file, args=(task_id, dest), daemon=True)
+            t.start()
+
+            self._send_json(200, {
+                "task_id": task_id,
+                "file": safe_name,
+                "status": "queued",
+            })
+        else:
+            self._send_json(404, {"error": "Not found"})
+
+    def log_message(self, format, *args):
+        pass  # Suppress HTTP server logs
+
+
 def _run_endpoint_server():
     """Run a lightweight upload server on a separate port."""
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    import json as json_module
-    import cgi
-    from urllib.parse import urlparse
-
-    class EndpointHandler(BaseHTTPRequestHandler):
-        def _send_json(self, code: int, data: dict):
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json_module.dumps(data).encode())
-
-        def _check_auth(self) -> bool:
-            auth = self.headers.get("Authorization", "")
-            expected = f"Bearer {_endpoint_access_key}"
-            if auth != expected:
-                self._send_json(403, {"error": "Invalid or missing access key"})
-                return False
-            return True
-
-        def do_OPTIONS(self):
-            self.send_response(200)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
-            self.end_headers()
-
-        def do_GET(self):
-            path = urlparse(self.path).path
-            if path == "/":
-                self._send_json(200, {
-                    "status": "running",
-                    "name": "Subtitle Forge Endpoint",
-                })
-            elif path == "/health":
-                self._send_json(200, {"status": "ok"})
-            else:
-                self._send_json(404, {"error": "Not found"})
-
-        def do_POST(self):
-            path = urlparse(self.path).path
-            if path == "/upload":
-                if not self._check_auth():
-                    return
-                # Parse multipart form
-                content_type = self.headers.get("Content-Type", "")
-                form = cgi.FieldStorage(
-                    fp=self.rfile,
-                    headers=self.headers,
-                    environ={
-                        "REQUEST_METHOD": "POST",
-                        "CONTENT_TYPE": content_type,
-                    }
-                )
-                if "file" not in form:
-                    self._send_json(400, {"error": "No file part"})
-                    return
-
-                file_item = form["file"]
-                if not file_item.filename:
-                    self._send_json(400, {"error": "No file selected"})
-                    return
-
-                # Save file to input directory
-                from werkzeug.utils import secure_filename
-                safe_name = secure_filename(file_item.filename or "upload")
-                dest = INPUT_DIR / safe_name
-                with open(dest, "wb") as f:
-                    f.write(file_item.file.read())
-
-                # Start processing
-                task_id = str(uuid.uuid4())[:8]
-                set_progress(task_id, file=safe_name, pct=0, stage="queued", message="Queued...")
-                t = threading.Thread(target=_process_file, args=(task_id, dest), daemon=True)
-                t.start()
-
-                self._send_json(200, {
-                    "task_id": task_id,
-                    "file": safe_name,
-                    "status": "queued",
-                })
-            else:
-                self._send_json(404, {"error": "Not found"})
-
-        def log_message(self, format, *args):
-            pass  # Suppress HTTP server logs
-
     global _endpoint_server_running
     _endpoint_server_running = True
-    server = HTTPServer(("0.0.0.0", ENDPOINT_PORT), EndpointHandler)
+    server = HTTPServer(("0.0.0.0", ENDPOINT_PORT), _EndpointHandler)
     try:
         server.serve_forever()
     except OSError:
@@ -634,21 +682,10 @@ def cancel_task(task_id: str):
 @app.route("/upload", methods=["POST"])
 def upload_file():
     """Accept uploaded file, save to input/, start background pipeline."""
-    if "file" not in request.files:
-        return jsonify({"error": "No file part"}), 400
-
-    file = request.files["file"]
-    if file.filename == "" or not file.filename:
-        return jsonify({"error": "No file selected"}), 400
-
-    if not allowed_file(file.filename):
-        return jsonify({"error": f"File type not allowed. Supported: {', '.join(sorted(ALLOWED_EXTENSIONS))}"}), 400
-
-    # Save file
-    safe_name = secure_filename(file.filename)
-    INPUT_DIR.mkdir(parents=True, exist_ok=True)
-    dest = INPUT_DIR / safe_name
-    file.save(str(dest))
+    result = _save_uploaded_file()
+    if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], str):
+        return result  # error response
+    safe_name, dest = result
 
     # Spawn background processing
     task_id = str(uuid.uuid4())[:8]
@@ -673,21 +710,10 @@ def run_pipeline():
       - chapters: "true"/"false" (default: false)
       - prompt: optional hint text for recognition
     """
-    if "file" not in request.files:
-        return jsonify({"error": "No file part"}), 400
-
-    file = request.files["file"]
-    if file.filename == "" or not file.filename:
-        return jsonify({"error": "No file selected"}), 400
-
-    if not allowed_file(file.filename):
-        return jsonify({"error": f"File type not allowed"}), 400
-
-    # Save file
-    safe_name = secure_filename(file.filename)
-    INPUT_DIR.mkdir(parents=True, exist_ok=True)
-    dest = INPUT_DIR / safe_name
-    file.save(str(dest))
+    result = _save_uploaded_file()
+    if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], str):
+        return result
+    safe_name, dest = result
 
     # Read toggle params from form
     translate = request.form.get("translate", "false").lower() == "true"

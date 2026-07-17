@@ -19,9 +19,493 @@ desktop/src/
 │   ├── ModelManage.tsx     # 頁面 5: 模型與裝置
 │   └── Settings.tsx        # 頁面 6: 設定
 │
+├── hooks/
+│   ├── useProgress.ts      # 輪詢 /progress
+│   ├── useSettings.ts      # 讀寫 settings.yaml
+│   └── useEndpoint.ts      # 端點服務控制
+│
 └── styles/
     └── global.css          # 暗色主題
 ```
+
+## Component Tree
+
+```
+<App>
+  ├── <Sidebar>                     # 左側導航列
+  │   ├── 圖示 + 標題
+  │   ├── NavItem (音檔)            # 當前頁面高亮
+  │   ├── NavItem (批次)
+  │   ├── NavItem (錄製)
+  │   ├── NavItem (端點)
+  │   ├── NavItem (模型)
+  │   ├── NavItem (設定)
+  │   └── 狀態列 (模型已就緒)
+  │
+  └── <MainContent>                 # 右側內容區
+      │
+      ├── [route=/audio]  <AudioFile>
+      │   ├── 上傳區 (檔案名稱 + 移除按鈕)
+      │   ├── 按鈕列 (開始轉換 / 輸出資料夾 / 字幕存檔)
+      │   ├── 設定列 (語言 / 說話者分離 / 時間軸對齊)
+      │   ├── 辨識提示 textarea
+      │   ├── 進度條
+      │   ├── 辨識結果
+      │   │   ├── 波形顯示
+      │   │   ├── 字詞區塊
+      │   │   └── 播放控制
+      │   └── 字幕列表
+      │
+      ├── [route=/batch]  <Batch>
+      │   ├── 控制列 (加入檔案 / 全部開始 / toggle)
+      │   └── 任務列表
+      │       └── TaskRow (檔名 / 進度條 / 狀態 / 選單)
+      │
+      ├── [route=/record]  <Record>
+      │   ├── 麥克風選取
+      │   ├── 錄音按鈕 (大圓形)
+      │   ├── 計時器
+      │   └── 即時字幕
+      │
+      ├── [route=/endpoint]  <Endpoint>
+      │   ├── 服務 toggle
+      │   ├── QR Code
+      │   ├── URL + 金鑰
+      │   └── Cloudflare toggle
+      │
+      ├── [route=/models]  <ModelManage>
+      │   ├── 系統自檢
+      │   └── 模型卡片列表
+      │       └── ModelCard (名稱 / 狀態 / 大小)
+      │
+      └── [route=/settings]  <Settings>
+          └── 設定表單 (縮放 / 格式 / VAD / 主題 / ...)
+```
+
+## Page Routing
+
+```
+Path          Page            Sidebar icon
+─────────────────────────────────────────────
+/             AudioFile        音檔 (default)
+/batch        Batch            批次
+/record       Record           錄製
+/endpoint     Endpoint         端點
+/models       ModelManage      模型
+/settings     Settings         設定
+```
+
+實作方式：不用 react-router，用簡單的 state-based routing：
+
+```tsx
+// App.tsx
+const [page, setPage] = useState<Page>('audio');
+// 點側邊欄 → setPage('batch') → 渲染對應元件
+```
+
+## Data Flow
+
+```
+┌──────────┐  fetch()  ┌───────────┐  state  ┌─────────────┐
+│ server.py │ ←──────→ │ api.ts    │ ──────→ │ React Page  │
+│ :5000     │          │ (HTTP)    │         │ Component   │
+└──────────┘          └───────────┘         └─────────────┘
+                            │                      │
+                            │ 回傳 JSON             │ 渲染 UI
+                            ▼                      ▼
+                    打字稿型別 (types.ts)     DOM + CSS
+```
+
+具體流程：
+1. 每個 page component 在 `useEffect` 中 call `api.getXXX()`
+2. `api.ts` 用 `fetch()` call `localhost:5000`
+3. 回傳 JSON → setState → 重新渲染
+4. 需要輪詢的 page (AudioFile, Batch) 用 `setInterval` 每 2s 更新
+
+## State Management
+
+不需要全域 state library (Redux/Zustand)。每個 page 自己管自己的 state：
+
+```tsx
+// AudioFile.tsx — 範例
+function AudioFile() {
+  const [file, setFile] = useState<File | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<TaskProgress | null>(null);
+  const [timestamps, setTimestamps] = useState<WordTimestamp[]>([]);
+  const [peaks, setPeaks] = useState<number[]>([]);
+  const [settings, setSettings] = useState({
+    language: 'auto',
+    diarize: false,
+    numSpeakers: 'auto',
+    timelineAlign: true,
+  });
+
+  // 上傳
+  async function handleUpload(file: File) { ... }
+  
+  // 輪詢進度
+  useEffect(() => {
+    if (!taskId) return;
+    const interval = setInterval(async () => {
+      const p = await api.getProgress();
+      if (p[taskId]) setProgress(p[taskId]);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [taskId]);
+  
+  // 載入波形 + 時間戳
+  useEffect(() => {
+    if (!taskId || progress?.stage !== 'done') return;
+    api.getWaveform(taskId).then(d => setPeaks(d.peaks));
+    api.getTimestamps(taskId).then(d => setTimestamps(d.words));
+  }, [taskId, progress]);
+  
+  // ... render
+}
+```
+
+## Hook 定義
+
+### useProgress(taskId)
+
+```tsx
+function useProgress(taskId: string | null) {
+  const [progress, setProgress] = useState<TaskProgress | null>(null);
+
+  useEffect(() => {
+    if (!taskId) return;
+    const interval = setInterval(async () => {
+      const data = await api.getProgress();
+      if (data[taskId]) setProgress(data[taskId]);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [taskId]);
+
+  return progress;
+}
+```
+
+### useSettings()
+
+```tsx
+function useSettings() {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  useEffect(() => {
+    api.getSettings().then(setSettings);
+  }, []);
+
+  const update = async (patch: Partial<AppSettings>) => {
+    await api.updateSettings(patch);
+    setSettings(prev => prev ? { ...prev, ...patch } : null);
+  };
+
+  return { settings, update };
+}
+```
+
+### useEndpoint()
+
+```tsx
+function useEndpoint() {
+  const [status, setStatus] = useState<EndpointStatus | null>(null);
+
+  const start = async () => {
+    const data = await api.startEndpoint();
+    setStatus(data);
+    return data;
+  };
+
+  const stop = async () => {
+    await api.stopEndpoint();
+    setStatus(null);
+  };
+
+  const refresh = async () => {
+    const data = await api.getEndpointStatus();
+    setStatus(data);
+  };
+
+  return { status, start, stop, refresh };
+}
+```
+
+## TypeScript Types (`types.ts`)
+
+```typescript
+// ── Task / Progress ──
+export interface TaskProgress {
+  file: string;
+  pct: number;
+  stage: 'queued' | 'extracting' | 'initializing' | 'processing' | 'done' | 'error' | 'cancelled' | 'downloading';
+  message: string;
+}
+
+export interface UploadResponse {
+  task_id: string;
+  file: string;
+  status: string;
+}
+
+// ── Pipeline ──
+export interface PipelineParams {
+  translate?: boolean;
+  notes?: boolean;
+  chapters?: boolean;
+  prompt?: string;
+}
+
+export interface PipelineResponse extends UploadResponse {
+  translate: boolean;
+  notes: boolean;
+  chapters: boolean;
+}
+
+// ── History ──
+export interface HistoryEntry {
+  timestamp: string;
+  category: string;
+  detail: string;
+  cost: number;
+}
+
+// ── Outputs ──
+export interface OutputFolder {
+  name: string;
+  files: string[];
+}
+
+// ── Waveform & Timestamps ──
+export interface WaveformData {
+  peaks: number[];
+  num_peaks: number;
+}
+
+export interface WordTimestamp {
+  text: string;
+  start: number;
+  end: number;
+}
+
+export interface TimestampsData {
+  words: WordTimestamp[];
+  language: string;
+}
+
+// ── Settings ──
+export interface PipelineSettings {
+  asr_backend?: 'local' | 'api';
+  asr_model?: string;
+  asr_diarize?: boolean;
+  asr_hotwords?: boolean;
+  asr_concurrent?: number;
+  vad_threshold?: number;
+  cc_conversion?: 'off' | 'standard' | 'taiwan';
+  translate?: boolean;
+  study_notes?: boolean;
+  chapters?: boolean;
+  [key: string]: unknown;
+}
+
+export interface AppSettings {
+  domain?: string;
+  pipeline?: PipelineSettings;
+  [key: string]: unknown;
+}
+
+// ── Models ──
+export interface ModelInfo {
+  id: string;
+  repo: string;
+  status: 'downloaded' | 'not_downloaded' | 'downloading';
+  size_mb: number;
+}
+
+export interface ModelsResponse {
+  models: ModelInfo[];
+}
+
+// ── Endpoint ──
+export interface EndpointStatus {
+  running: boolean;
+  port: number | null;
+  url: string | null;
+  key: string | null;
+}
+
+export interface EndpointStartResponse {
+  status: string;
+  port: number;
+  url: string;
+  key: string;
+}
+
+// ── Components Props ──
+export type Page = 'audio' | 'batch' | 'record' | 'endpoint' | 'models' | 'settings';
+
+export interface NavItemProps {
+  icon: string;
+  label: string;
+  page: Page;
+  active: boolean;
+  onClick: (page: Page) => void;
+}
+
+export interface TaskRowProps {
+  file: string;
+  progress: TaskProgress | null;
+  onCancel: (taskId: string) => void;
+}
+
+export interface ModelCardProps {
+  model: ModelInfo;
+  onDownload: (modelId: string) => void;
+}
+```
+
+
+## Complete `api.ts`
+
+```typescript
+// api.ts — Single API layer. All pages import from here.
+const BASE = 'http://localhost:5000';
+
+async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export const api = {
+  // ── Upload ──
+  upload: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<UploadResponse>(`${BASE}/upload`, { method: 'POST', body: form });
+  },
+
+  // ── Pipeline ──
+  runPipeline: (file: File, params?: PipelineParams) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (params?.translate) form.append('translate', 'true');
+    if (params?.notes) form.append('notes', 'true');
+    if (params?.chapters) form.append('chapters', 'true');
+    if (params?.prompt) form.append('prompt', params.prompt);
+    return request<PipelineResponse>(`${BASE}/pipeline`, { method: 'POST', body: form });
+  },
+
+  // ── Progress ──
+  getProgress: () =>
+    request<Record<string, TaskProgress>>(`${BASE}/progress`),
+
+  // ── History ──
+  getHistory: () =>
+    request<HistoryEntry[]>(`${BASE}/history`),
+
+  // ── Outputs ──
+  getOutputs: () =>
+    request<OutputFolder[]>(`${BASE}/outputs`),
+
+  // ── Waveform ──
+  getWaveform: (taskId: string) =>
+    request<WaveformData>(`${BASE}/waveform/${taskId}`),
+
+  // ── Timestamps ──
+  getTimestamps: (taskId: string) =>
+    request<TimestampsData>(`${BASE}/timestamps/${taskId}`),
+
+  // ── Settings ──
+  getSettings: () =>
+    request<AppSettings>(`${BASE}/settings`),
+
+  updateSettings: (data: Partial<AppSettings>) =>
+    request<{status: string}>(`${BASE}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  // ── Cancel ──
+  cancelTask: (taskId: string) =>
+    request<{status: string}>(`${BASE}/cancel/${taskId}`, { method: 'POST' }),
+
+  // ── Models ──
+  getModels: () =>
+    request<ModelsResponse>(`${BASE}/models/status`),
+
+  downloadModel: (modelId: string) =>
+    request<{status: string}>(`${BASE}/models/download/${modelId}`),
+
+  // ── Endpoint ──
+  startEndpoint: () =>
+    request<EndpointStartResponse>(`${BASE}/endpoint/start`, { method: 'POST' }),
+
+  stopEndpoint: () =>
+    request<{status: string}>(`${BASE}/endpoint/stop`, { method: 'POST' }),
+
+  getEndpointStatus: () =>
+    request<EndpointStatus>(`${BASE}/endpoint/status`),
+};
+```
+
+
+## Error & Loading Patterns
+
+每個 page component 遵循這三種狀態：
+
+```tsx
+function AudioFile() {
+  // 1. Loading: 初始資料載入中
+  if (isLoading) return <LoadingSpinner />;
+
+  // 2. Error: API 失敗
+  if (error) return <ErrorBanner message={error} onRetry={retry} />;
+
+  // 3. Empty: 無資料
+  if (!file && !taskId) return <EmptyState message="選擇音檔開始轉換" />;
+
+  // 4. Normal: 正常顯示
+  return <div>...</div>;
+}
+```
+
+
+## CSS Variables (`styles/global.css`)
+
+```css
+:root {
+  --bg-primary: #0f172a;       /* slate-900 */
+  --bg-card: #1e293b;          /* slate-800 */
+  --bg-hover: #334155;         /* slate-700 */
+  --bg-active: #1e3a5f;        /* blue-900 */
+  --text-primary: #e2e8f0;     /* slate-200 */
+  --text-secondary: #94a3b8;   /* slate-400 */
+  --text-muted: #64748b;       /* slate-500 */
+  --accent: #3b82f6;           /* blue-500 */
+  --accent-hover: #2563eb;     /* blue-600 */
+  --success: #22c55e;          /* green-500 */
+  --warning: #f59e0b;          /* amber-500 */
+  --error: #ef4444;            /* red-500 */
+  --border: #334155;           /* slate-700 */
+  --sidebar-width: 200px;
+  --header-height: 48px;
+  --radius: 8px;
+  --radius-sm: 4px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+```
+
 
 ## 頁面規格
 
@@ -233,20 +717,110 @@ FFmpeg 路徑       [(留空=自動偵測)]
 
 ---
 
-## API Contract (補充)
+## API Contract
 
-除了現有 endpoint，需新增：
+All endpoints are on `http://localhost:5000`.
 
-| Method | Route | 用途 |
-|--------|-------|------|
-| POST | `/endpoint/start` | 啟動本機 server |
-| POST | `/endpoint/stop` | 停止 server |
-| GET | `/endpoint/status` | 目前 URL + QR code data |
-| GET | `/models/status` | 所有模型狀態 |
-| POST | `/models/download/:name` | 下載特定模型 |
-| POST | `/models/recheck` | 重新掃描已下載模型 |
-| GET | `/settings` | 讀取 settings.yaml |
-| POST | `/settings` | 寫入 settings.yaml |
+### Upload & Pipeline
+
+```http
+POST /upload
+Content-Type: multipart/form-data
+file: <binary>
+
+→ {"task_id", "file", "status"}
+```
+
+```http
+POST /pipeline
+Content-Type: multipart/form-data
+file: <binary>
+translate: "true"|"false"
+notes: "true"|"false"
+chapters: "true"|"false"
+prompt: "optional hint text"
+
+→ {"task_id", "file", "status", "translate", "notes", "chapters"}
+```
+
+### Progress & History
+
+```http
+GET /progress
+→ {[task_id]: {file, pct, stage, message}}
+
+GET /history
+→ [{timestamp, category, detail, cost}]
+```
+
+### Media & Waveform
+
+```http
+GET /audio/<path>
+→ audio/video file (Range header for seeking)
+
+GET /waveform/<task_id>
+→ {"peaks": [...], "num_peaks": N}
+
+GET /timestamps/<task_id>
+→ {"words": [{text, start, end}], "language": "..."}
+```
+
+### Outputs
+
+```http
+GET /outputs
+→ [{name, files: [...]}]
+
+GET /outputs/<path>
+→ file download
+```
+
+### Settings
+
+```http
+GET /settings
+→ settings.yaml as JSON
+
+POST /settings
+Content-Type: application/json
+{"pipeline": {"asr_backend": "api"}}
+
+→ {"status": "ok"}
+```
+
+### Cancel
+
+```http
+POST /cancel/<task_id>
+→ {"status": "cancelled"}
+```
+
+### Models
+
+```http
+GET /models/status
+→ {"models": [{id, repo, status, size_mb}]}
+
+GET /models/download/<model_id>
+→ {"status": "downloading|already_downloaded"}
+```
+
+### Endpoint Service
+
+```http
+POST /endpoint/start
+→ {"status": "started", "port": 11435, "url": "...", "key": "..."}
+
+POST /endpoint/stop
+→ {"status": "stopped"}
+
+GET /endpoint/status
+→ {"running": bool, "port": ..., "url": ..., "key": ...}
+
+GET /endpoint/qrcode
+→ image/png (QR code for server URL)
+```
 
 ## Theme
 

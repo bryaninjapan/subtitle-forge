@@ -1,44 +1,68 @@
 # TODO — Subtitle Forge
 
-> Added: 2026-07-17
-> Updated: 2026-07-17 (G1 done, G7 refined)
+> Updated: 2026-07-17
+> Status: Backend complete, pending React frontend (Part B)
 
-## 🔴 HIGH (UX-2 前置條件)
+## ✅ Done (backend)
 
-- [x] **G1: Phase A4 — ASR model 路徑移至 settings.yaml** ✅ Done
+- [x] **G1: ASR model → settings.yaml** ✅
+- [x] **G2 (backend): Model status + download API** ✅ `GET /models/status`, `POST /models/download/:name`
+- [x] **Pipeline toggle** ✅ translate/notes/chapters 開關
+- [x] **VAD threshold → settings.yaml** ✅ `vad_threshold: 0.5`
+- [x] **OpenCC 簡繁轉換** ✅ `cc_conversion: off/standard/taiwan`
+- [x] **Prompt → hot words** ✅ `POST /pipeline prompt` 參數
+- [x] **Waveform / timestamps / audio endpoints** ✅ Phase 1
+- [x] **Model management backend** ✅ Phase 3
+- [x] **Endpoint service (QR code, auth, port 11435)** ✅ Phase 4
+- [x] **Tauri sidecar spawn server.py** ✅ A3
+- [x] **System tray** ✅ A4
+- [x] **CORS + API contract** ✅ A6
 
-## 🟡 MEDIUM (UX-2 需納入規劃)
+## 🟡 REACT FRONTEND (Part B)
 
-- [ ] **G2: Model 下載 UX**
-  - 1.8GB~4.4GB 的 ASR model 第一次使用時需下載
-  - 需要: server.py 新 API (`GET /models/status`, `POST /models/download`)
-  - 前端顯示下載進度 + 完整性檢查 (參考 QwenASRMiniTool downloader.py)
+### P1: 音檔轉字幕 (`AudioFile.tsx`)
+- [ ] 上傳區（顯示檔名 + 移除）
+- [ ] 按鈕列（開始轉換、輸出資料夾、字幕存檔）
+- [ ] 簡單設定（語言、說話者分離、時間軸對齊）
+- [ ] 辨識提示 textarea（可選）
+- [ ] 進度條
+- [ ] 辨識結果（波形、字詞區塊、播放控制）
+- [ ] 字幕列表（時間戳 + 文字）
 
-- [ ] **G3: 前端測試策略**
-  - Component 測試 (Vitest + Testing Library)
-  - Integration 測試 (MSW mock server)
-  - 避免 UI 改動全靠手動測
+### P2: 批次辨識 (`Batch.tsx`)
+- [ ] 加入檔案、全部開始
+- [ ] 每個檔案進度條 + 狀態標籤
+- [ ] 說話者分離 toggle
 
-- [ ] **G4: 首次執行體驗 (Onboarding)**
-  - Tauri sidecar 自動 spawn `python3 server.py`
-  - 啟動狀態檢查 UI (server 是否在跑)
-  - Model 下載引導 (第一次開時)
-  - 歡迎畫面或 tooltip 引導
+### P3: 錄製轉換 (`Record.tsx`)
+- [ ] 麥克風選取
+- [ ] 錄音按鈕 + 計時器
+- [ ] 即時字幕顯示
+- [ ] 即時存檔 toggle
 
-- [ ] **G5: Error / Loading / Empty State 覆蓋**
-  - server.py 斷線 → 「連線中…」+ 重試按鈕
-  - pipeline 失敗 → task row 顯示錯誤訊息 + 重試
-  - 無歷史任務 → 「尚無任務」插圖
-  - 上傳失敗 → toast 通知 + 原因
+### P4: 端點服務 (`Endpoint.tsx`)
+- [ ] 啟動/停止 toggle
+- [ ] QR code 顯示
+- [ ] URL + 金鑰顯示
+- [ ] Cloudflare tunnel toggle
 
-## 🟢 LOW (之後再補)
+### P5: 模型與裝置 (`ModelManage.tsx`)
+- [ ] 模型列表 + 下載狀態
+- [ ] 下載觸發
+- [ ] 推理核心選擇
 
-- [ ] **G6: 版本更新機制**
-  - Tauri auto-updater 基於 GitHub Releases
-  - UX-2 穩定後再實作
+### P6: 設定 (`Settings.tsx`)
+- [ ] 介面縮放滑桿
+- [ ] 輸出格式選擇
+- [ ] VAD 靈敏度滑桿
+- [ ] 簡繁轉換選擇
+- [ ] 外觀主題
+- [ ] FFmpeg 路徑
+- [ ] HuggingFace 鏡像
 
-- [ ] **G8: Windows ASR Backend**
-  - MLX 是 Apple Silicon only → Windows 無法用 Local ASR
-  - 需要: faster-whisper (CUDA/CPU) 或 QwenASRMiniTool 的 OpenVINO INT8 backend
-  - Scope: 新增一個 Windows 專用的 ASR backend class
-  - 優先度: LOW（目前 Windows 用戶可走 API ASR）
+### 通用
+- [ ] **G3: 前端測試** (Vitest + MSW)
+- [ ] **G4: 首次啟動引導** (歡迎畫面 + model 下載提示)
+- [ ] **G5: Error/Loading/Empty 狀態** (每個 component)
+- [ ] **G6: 版本更新** (Tauri auto-updater)
+- [ ] **G8: Windows ASR Backend** (faster-whisper/OpenVINO)
