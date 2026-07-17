@@ -36,3 +36,6 @@ pipeline_failures.md
 pipeline_report.md
 cost_history.md
 usage_sample_*.json
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/dist/
